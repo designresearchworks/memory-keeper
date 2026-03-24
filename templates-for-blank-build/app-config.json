@@ -1,0 +1,10 @@
+{
+  "version": "1.0",
+  "createdAt": "",
+  "openRouterApiKey": null,
+  "assemblyAiApiKey": null,
+  "modelRouting": "auto",
+  "modelOverride": null,
+  "port": 8787,
+  "debugMode": false
+}

@@ -1,0 +1,10 @@
+{
+  "version": "1.0",
+  "createdAt": "",
+  "storytellerName": "",
+  "profileComplete": false,
+  "styleGuideComplete": false,
+  "storyCount": 0,
+  "backupRetentionDays": 90,
+  "firstRun": true
+}

@@ -1,10 +1,10 @@
 .DS_Store
 
 # Local secrets and machine-specific runtime config
-app-config.json
+/app-config.json
 
 # Live private archive data
-memory-keeper-data-store/
+/memory-keeper-data-store/
 
 # Generated distributable build
 ../transfer_build/
