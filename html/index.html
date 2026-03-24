@@ -283,8 +283,7 @@
         </div>
         <div class="row" style="margin-bottom: 12px; align-items: end;">
           <div class="field" style="flex: 1 1 260px; margin: 0;">
-            <label for="newArchiveLabelInput">New archive label</label>
-            <input id="newArchiveLabelInput" type="text" placeholder="Family Archive">
+            <input id="newArchiveLabelInput" type="text" placeholder="Give the new archive a name...." aria-label="Give the new archive a name">
           </div>
           <button id="createArchiveButton" type="button" class="button-secondary">Create New Archive</button>
         </div>
@@ -435,6 +434,10 @@
             <input id="firstRunStorytellerName" type="text" autocomplete="off" placeholder="What should Memory Keeper call you?">
             <div class="hint">This will be used as your name in the archive.</div>
           </div>
+          <div class="row" style="margin-top: 12px;">
+            <button id="firstRunImportArchiveButton" type="button" class="button-secondary hidden">Import Existing Archive Zip</button>
+          </div>
+          <div class="hint hidden" id="firstRunImportArchiveHint" style="margin-top: 10px;">If you already have a Memory Keeper archive zip, import it instead of creating a new starter archive.</div>
         </div>
         <div class="first-run-step hidden" id="firstRunStepSample">
           <div class="field">
@@ -1220,6 +1223,8 @@
       firstRunStepSample: document.getElementById("firstRunStepSample"),
       firstRunStepBasics: document.getElementById("firstRunStepBasics"),
       firstRunStorytellerName: document.getElementById("firstRunStorytellerName"),
+      firstRunImportArchiveButton: document.getElementById("firstRunImportArchiveButton"),
+      firstRunImportArchiveHint: document.getElementById("firstRunImportArchiveHint"),
       firstRunWritingSample: document.getElementById("firstRunWritingSample"),
       firstRunBasicInfo: document.getElementById("firstRunBasicInfo"),
       firstRunThemePreview: document.getElementById("firstRunThemePreview"),
@@ -1735,6 +1740,10 @@
       elements.saveApiKeyModalButton.addEventListener("click", saveApiKeysFromModal);
       elements.firstRunBackButton.addEventListener("click", () => moveFirstRunStep(-1));
       elements.firstRunCancelButton.addEventListener("click", closeFirstRunModal);
+      elements.firstRunImportArchiveButton.addEventListener("click", () => {
+        elements.importArchiveInput.value = "";
+        elements.importArchiveInput.click();
+      });
       elements.firstRunNextButton.addEventListener("click", () => moveFirstRunStep(1));
       elements.firstRunSkipSampleButton.addEventListener("click", () => {
         elements.firstRunWritingSample.value = "";
@@ -3884,6 +3893,9 @@ ${styleGuideContent}
             : "Imported archive is now active.",
           outcome: "complete"
         });
+        if (!elements.firstRunModal.classList.contains("hidden")) {
+          closeFirstRunModal();
+        }
         await refreshArchiveAfterChange();
         finishSaveRun("complete", "Archive imported.");
         setPipelineStatus("complete", "Archive imported.", { dismissible: true });
@@ -3920,7 +3932,9 @@ ${styleGuideContent}
       elements.firstRunBasicInfo.value = "";
       renderFirstRunThemePreview();
       elements.firstRunSaveButton.textContent = "Save starter setup";
-      elements.firstRunModalStatus.textContent = "Step 1: enter the storyteller's name.";
+      elements.firstRunModalStatus.textContent = state.firstRunPending && !state.firstRun.rerunMode && !state.firstRun.creationMode
+        ? "Step 1: enter the storyteller's name, or import an existing archive zip."
+        : "Step 1: enter the storyteller's name.";
     }
 
     function buildBlankTemplateProfile(name) {
@@ -4075,6 +4089,7 @@ ${styleGuideContent}
     function renderFirstRunStep() {
       const completed = state.firstRun.complete;
       const saving = state.firstRun.saving;
+      const canImportExistingArchive = state.firstRunPending && !state.firstRun.rerunMode && !state.firstRun.creationMode;
       elements.firstRunModalMessage.textContent = completed
         ? ""
         : state.firstRun.creationMode
@@ -4086,6 +4101,8 @@ ${styleGuideContent}
       elements.firstRunStepSample.classList.toggle("hidden", completed || state.firstRun.step !== 1);
       elements.firstRunStepBasics.classList.toggle("hidden", completed || state.firstRun.step !== 2);
       elements.firstRunCancelButton.classList.toggle("hidden", !state.firstRun.rerunMode && !state.firstRun.creationMode);
+      elements.firstRunImportArchiveButton.classList.toggle("hidden", completed || state.firstRun.step !== 0 || !canImportExistingArchive);
+      elements.firstRunImportArchiveHint.classList.toggle("hidden", completed || state.firstRun.step !== 0 || !canImportExistingArchive);
       elements.firstRunBackButton.classList.toggle("hidden", completed || state.firstRun.step === 0);
       elements.firstRunSkipSampleButton.classList.toggle("hidden", completed || state.firstRun.step !== 1);
       elements.firstRunNextButton.classList.toggle("hidden", completed || state.firstRun.step === 2);
@@ -4098,6 +4115,7 @@ ${styleGuideContent}
       elements.firstRunSaveButton.disabled = saving;
       elements.firstRunOkayButton.disabled = saving;
       elements.firstRunStorytellerName.disabled = saving || completed;
+      elements.firstRunImportArchiveButton.disabled = saving || completed;
       elements.firstRunWritingSample.disabled = saving || completed;
       elements.firstRunBasicInfo.disabled = saving || completed;
       elements.firstRunThemePreview.querySelectorAll("button").forEach((button) => {
@@ -4211,7 +4229,9 @@ ${quoted}
         ? "Step 3: add a few basics, then save the starter setup."
         : next === 1
           ? "Step 2: paste a writing sample, or skip it."
-          : "Step 1: enter the storyteller's name.";
+          : state.firstRunPending && !state.firstRun.rerunMode && !state.firstRun.creationMode
+            ? "Step 1: enter the storyteller's name, or import an existing archive zip."
+            : "Step 1: enter the storyteller's name.";
     }
 
     async function saveFirstRunSetup() {
@@ -10395,7 +10415,8 @@ No writing sample has been provided yet.
       const base = String(state.audioInput.baseText || "").trim();
       const finalText = String(state.audioInput.transcriptFinal || "").trim();
       const interimText = String(state.audioInput.transcriptInterim || "").trim();
-      elements.chatInput.value = [base, finalText, interimText].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+      setActiveChatInputValue([base, finalText, interimText].filter(Boolean).join(" ").replace(/\s+/g, " ").trim());
+      autoSizeComposerTextarea(getActiveChatInput());
     }
 
     function appendFinalTranscript(text) {
@@ -10507,7 +10528,7 @@ No writing sample has been provided yet.
         websocket.addEventListener("open", async () => {
           opened = true;
           state.isRecording = true;
-          state.audioInput.baseText = String(elements.chatInput.value || "").trim();
+          state.audioInput.baseText = String(getActiveChatInput().value || "").trim();
           updateAudioUI();
           setStatus(elements.chatStatus, "Listening with AssemblyAI...", "success");
 
