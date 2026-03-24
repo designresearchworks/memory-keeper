@@ -1,0 +1,219 @@
+Memory Keeper prompt guide
+==========================
+
+This document explains what each prompt file in the top-level system-prompts folder does, what kind of input it expects, and what kind of output it is meant to produce. It is a working map of the prompt layer rather than a formal spec.
+
+Archive layout note
+-------------------
+
+The live archive now stores:
+- profile at reference/profile.md
+- style guide at reference/style-guide.md
+- story index at meta-stories/story-index.md
+- follow-ups at meta-stories/follow-ups.md
+
+Core idea
+---------
+
+The app has two broad families of prompts:
+
+1. Conversation prompts
+   These shape what Memory Keeper says to the user during input or output interactions.
+
+2. Processing prompts
+   These run after or around a session to classify material, write stories, update the profile, update the style guide, generate follow-ups, and answer retrieval queries.
+
+The vibes overlay
+-----------------
+
+File: joevibes.md
+
+Purpose:
+- A lightweight overlay that is appended to many generative prompts.
+- It is meant to stop obvious AI writing habits and apply broad house rules.
+
+Important note:
+- This is only used if the file exists in system-prompts/.
+- It is applied on top of certain base prompts rather than replacing them.
+
+Conversation prompts
+--------------------
+
+story-gathering.md
+- Used for normal Input-side conversations.
+- Role: help the storyteller tell stories, add corrections, add profile facts, and mix those in one session.
+- Output during the conversation is normal assistant chat.
+- When the user wants to save, the prompt instructs the model to emit a <story_session> block containing the raw session material as faithfully as possible.
+
+prompt-followup-gathering.md
+- Used when the user says "prompt me" and the app starts from previously saved follow-up questions.
+- Role: raise one of the saved follow-up threads naturally and gather more material.
+- Like story-gathering.md, it eventually emits a <story_session> block for later processing.
+
+retrieval.md
+- Used on the Output side when the user asks about people, places, times, themes, or asks for a story back.
+- Role: answer from saved archive material in the storyteller's voice.
+- This is a generative output prompt, not a save prompt.
+
+router.md
+- Used by the routing layer when the app needs to classify what the user is trying to do.
+- Role: decide between input, output, profile update, follow-up prompt, system query, and so on.
+- Output is structured routing information, not user-facing prose.
+
+Archive and save prompts
+------------------------
+
+story-extraction.md
+- Used early in the save pipeline.
+- Role: take a raw <story_session> and extract one or more candidate stories from it.
+- Output: one or more <extracted_story> blocks with metadata and story text.
+- Important rule: stay very close to what was actually said, do not embellish, preserve uncertainty.
+
+save-decision.md
+- Used after extraction.
+- Role: decide what kinds of archive updates the session should produce.
+- Possible classifications:
+  - NEW_STORY
+  - UPDATE_EXISTING
+  - PROFILE_UPDATE
+  - STYLE_GUIDE_UPDATE
+- Output: short JSON inside <save_decision> tags.
+- Important rule: classify only from the actual material present; do not infer extra facts.
+
+story-save.md
+- Used when the pipeline is finalising one primary story for storage.
+- Role: produce the canonical saved story record, plus optional profile patch and follow-up thread suggestions.
+- Output:
+  - <story_record>
+  - optional <profile_patch>
+  - <change_summary>
+  - optional <follow_up_threads>
+- Important rule: write in first person and stay close to the raw session. Use the style guide lightly, not as a licence to invent.
+
+update-story.md
+- Used when new material should be woven into an existing story instead of saved as a brand-new one.
+- Role: rewrite the full existing story file so the new material is integrated naturally.
+- Output: full story file inside <updated_story>.
+- Important rule: make the lightest rewrite possible, preserve first person, and do not add unsupported detail.
+
+summary-generation.md
+- Used to create or refresh the short summaries in story-index.md.
+- Role: write a concise factual index summary.
+- Output: plain summary text only.
+- Important rule: stay factual, preserve uncertainty, and avoid inferred meaning or inflated significance.
+
+Profile prompts
+---------------
+
+profile-update.md
+- Used when the user explicitly wants to update durable profile information.
+- Role: turn the user's update into one or more top-level profile section patches.
+- Output:
+  - <profile_patch>
+  - <change_summary>
+- Important rule: do not rewrite the whole profile, do not infer facts, preserve existing detail inside touched sections.
+
+profile-reconciliation.md
+- Used after saved session material is processed.
+- Role: check whether the new saved material implies durable profile changes.
+- Output:
+  - <profile_patch>
+  - <change_summary>
+- Important rule: add durable facts only, preserve untouched sections, and avoid inference beyond the saved material.
+
+profile-merge.md
+- Used as a safety layer when proposed profile content needs to be merged with the existing profile.
+- Role: preserve existing profile information and prevent destructive overwrite.
+- This is an internal protection prompt rather than a user-facing one.
+
+Style guide prompts
+-------------------
+
+style-guide-extraction.md
+- Used when building or refreshing a style guide from a writing sample.
+- Role: describe the storyteller's style in a structured way.
+- Output: a complete style-guide.md document.
+
+style-guide-evolution.md
+- Used after a session save.
+- Role: distil useful new style notes from a saved session and fold them into style-guide.md.
+- Output:
+  - <style_guide_patch>
+  - <change_summary>
+- Important rule: do not overfit to one story or one-off factual details.
+
+style-guide-compaction.md
+- Used manually when the style guide has grown too long or repetitive.
+- Role: compact the guide while preserving the core recurring voice traits and practical writing instructions.
+- Output:
+  - <style_guide_compacted>
+  - <change_summary>
+
+Follow-up prompts
+-----------------
+
+follow-up-generation.md
+- Used after a story save or story update.
+- Role: generate only the follow-up questions that are clearly worth keeping, and identify any that have now been answered.
+- Output:
+  - <covered_follow_ups>
+  - <new_follow_ups>
+- Important rule: be conservative; do not generate follow-ups just because more could theoretically be asked.
+
+follow-up-selection.md
+- Used when selecting existing follow-up questions to bring back into a new session.
+- Role: choose the most suitable saved question(s) to return to.
+
+Retrieval support prompt
+------------------------
+
+index-query.md
+- Used before the main retrieval response.
+- Role: scan story-index.md and decide which saved stories are relevant to the user's output-side query.
+- Output is structured retrieval support, not final user prose.
+
+How the main save flow works
+----------------------------
+
+Typical Input-side save sequence:
+
+1. story-gathering.md or prompt-followup-gathering.md
+   -> produce <story_session>
+
+2. story-extraction.md
+   -> produce <extracted_story>
+
+3. save-decision.md
+   -> decide NEW_STORY / UPDATE_EXISTING / PROFILE_UPDATE / STYLE_GUIDE_UPDATE
+
+4. Depending on the decision:
+   - NEW_STORY -> story-save.md
+   - UPDATE_EXISTING -> update-story.md
+   - PROFILE_UPDATE -> profile-update.md or profile-reconciliation.md
+   - STYLE_GUIDE_UPDATE -> style-guide-evolution.md
+
+5. summary-generation.md
+   -> refresh index summaries
+
+6. follow-up-generation.md
+   -> create or remove follow-up questions
+
+Prompt editing guidance
+-----------------------
+
+When editing prompts, keep these distinctions clear:
+
+- Conversation prompts should guide the user interaction.
+- Processing prompts should produce structured, reliable outputs.
+- Style guidance should shape wording, not invent content.
+- Story-saving prompts should preserve what was actually told.
+- Profile prompts should preserve existing data and add only durable facts.
+
+Current editorial house rules
+-----------------------------
+
+- Saved stories should be in first person.
+- Do not invent facts that were not in the session or the target file.
+- Preserve uncertainty instead of resolving it.
+- Do not use em dashes if joevibes.md is present and loaded.
+- Do not add "this story is unresolved" commentary.

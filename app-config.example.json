@@ -1,0 +1,41 @@
+{
+  "version": "1.0",
+  "createdAt": "",
+  "openRouterApiKey": null,
+  "assemblyAiApiKey": null,
+  "modelRouting": "auto",
+  "modelOverride": "anthropic/claude-haiku-4.5",
+  "port": 8787,
+  "debugMode": true,
+  "taskMaxTokens": {
+    "single": {
+      "foundation": 1800,
+      "onboarding": 2200,
+      "profileUpdate": 2600,
+      "styleGuideExtraction": 5000,
+      "storyGathering": 1400,
+      "promptFollowupSelection": 900,
+      "promptFollowupGathering": 1400,
+      "storyExtraction": 3000,
+      "followUpGeneration": 1400,
+      "saveDecision": 1400,
+      "storyUpdate": 3200,
+      "metadataExtraction": 1200,
+      "connectionRefresh": 2200,
+      "summarisation": 1400,
+      "profileReconciliation": 2800,
+      "styleGuideEvolution": 2200,
+      "styleGuideCompaction": 6000,
+      "statusSynonymGeneration": 4500,
+      "indexQuery": 900,
+      "retrievalSimple": 2200,
+      "retrievalVoiced": 2600
+    },
+    "stream": {
+      "retrievalSimple": 2400,
+      "retrievalVoiced": 3200
+    }
+  },
+  "dynamicPipelineStatusMessages": true,
+  "designTheme": "sunset"
+}
