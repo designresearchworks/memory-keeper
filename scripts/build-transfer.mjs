@@ -3,6 +3,7 @@ import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ARCHIVE_DIR_NAME } from "./archive-layout.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,7 +11,6 @@ const DEV_ROOT = path.resolve(__dirname, "..");
 const WORKSPACE_ROOT = path.resolve(DEV_ROOT, "..");
 const TRANSFER_DIR = path.join(WORKSPACE_ROOT, "transfer_build");
 const TEMPLATE_DIR = path.join(DEV_ROOT, "templates-for-blank-build");
-const DATA_STORE_DIR = "memory-keeper-data-store";
 const HTML_DIR = "html";
 const WITH_ORIGIN_STORY = process.argv.includes("--with-origin-story");
 
@@ -20,7 +20,8 @@ const COPY_FILES = [
   "memory-keeper.bat",
   path.join("scripts", "memory-keeper.ps1"),
   path.join("scripts", "serve-local.mjs"),
-  path.join("scripts", "run-memory-keeper.mjs")
+  path.join("scripts", "run-memory-keeper.mjs"),
+  path.join("scripts", "archive-layout.mjs")
 ];
 
 const COPY_DIRS = [
@@ -30,6 +31,7 @@ const COPY_DIRS = [
 async function main() {
   await rm(TRANSFER_DIR, { recursive: true, force: true });
   await mkdir(TRANSFER_DIR, { recursive: true });
+  await mkdir(path.join(TRANSFER_DIR, "archives"), { recursive: true });
 
   await buildSanitizedIndex();
   await buildSanitizedAppConfig();
@@ -72,11 +74,13 @@ async function buildSanitizedAppConfig() {
   const config = JSON.parse(await readFile(sourcePath, "utf8"));
   config.openRouterApiKey = null;
   config.assemblyAiApiKey = null;
+  config.activeArchiveId = null;
+  config.archives = [];
   await writeFile(path.join(TRANSFER_DIR, "app-config.json"), JSON.stringify(config, null, 2), "utf8");
 }
 
 async function addOriginStory(archiveRoot) {
-  const dataRoot = path.join(archiveRoot, DATA_STORE_DIR);
+  const dataRoot = path.join(archiveRoot, ARCHIVE_DIR_NAME);
   const configPath = path.join(dataRoot, "archive-config.json");
   const indexPath = path.join(dataRoot, "meta-stories", "story-index.md");
   const storyPath = path.join(dataRoot, "stories", "the-origin-story.md");
@@ -149,11 +153,13 @@ What is included
 - html/style.css
 - scripts/serve-local.mjs
 - scripts/run-memory-keeper.mjs
+- scripts/archive-layout.mjs
 - memory-keeper.sh
 - memory-keeper.bat
 - scripts/memory-keeper.ps1
 - system-prompts/
 - templates-for-blank-build/
+- archives/
 
 Folder layout
 -------------
@@ -161,12 +167,16 @@ Memory Keeper now runs against the whole app folder through the local helper ser
 
 At the top level you should have:
 - app-config.json
-- ${DATA_STORE_DIR}/
+- archives/
+- templates-for-blank-build/
 - html/
 - scripts/
 - system-prompts/
 
-Inside ${DATA_STORE_DIR}/ you should have:
+Inside each archive folder you should have:
+- ${ARCHIVE_DIR_NAME}/
+
+Inside ${ARCHIVE_DIR_NAME}/ you should have:
 - archive-config.json
 - reference/
 - stories/
@@ -174,10 +184,10 @@ Inside ${DATA_STORE_DIR}/ you should have:
 - backups/
 
 Important working files:
-- ${DATA_STORE_DIR}/reference/profile.md
-- ${DATA_STORE_DIR}/reference/style-guide.md
-- ${DATA_STORE_DIR}/meta-stories/story-index.md
-- ${DATA_STORE_DIR}/meta-stories/follow-ups.md
+- ${ARCHIVE_DIR_NAME}/reference/profile.md
+- ${ARCHIVE_DIR_NAME}/reference/style-guide.md
+- ${ARCHIVE_DIR_NAME}/meta-stories/story-index.md
+- ${ARCHIVE_DIR_NAME}/meta-stories/follow-ups.md
 
 How to use it
 -------------
@@ -189,10 +199,10 @@ How to use it
    - install Node.js first if it is missing
    - check app-config.json
    - ask for any missing API keys
-   - create or update a local ${DATA_STORE_DIR}/ working folder from the blank template if needed
+   - create the first archive from the blank template if no archive exists yet
    - start the local server
 4. Open: http://127.0.0.1:8787
-5. The app will use the local archive in this folder automatically.
+5. The app will use the active archive in this folder automatically.
 6. If this is a blank archive, the app will show a short first-run setup flow in the browser.
 7. After that, it will invite you to tell your first story.
 
@@ -200,12 +210,13 @@ Notes
 -----
 - The packaged app does not include any preloaded API keys.
 - The root app config lives at the top level as app-config.json.
-- The archive metadata lives inside ${DATA_STORE_DIR}/archive-config.json.
-- The browser no longer links to local folders directly. The local server uses the archive in this folder automatically.
-- The templates-for-blank-build folder contains a starter ${DATA_STORE_DIR}/ folder with the minimum file structure Memory Keeper expects.
+- The archive metadata lives inside each archive's ${ARCHIVE_DIR_NAME}/archive-config.json.
+- The browser no longer links to local folders directly. The local server uses the active archive in this folder automatically.
+- The templates-for-blank-build folder contains a starter ${ARCHIVE_DIR_NAME}/ folder with the minimum file structure Memory Keeper expects.
+- The shipped build includes an empty archives/ directory but no real archive contents.
 - By default the template is empty except for starter profile/style-guide scaffolding.
 - If the build script was run with --with-origin-story, the template also includes one small starter story.
-- The startup script creates or updates a working ${DATA_STORE_DIR}/ folder beside the app.
+- The startup script creates an archive under archives/ if needed.
 - stories/ is for actual story files only.
 - meta-stories/ stores archive-wide metadata such as the story index and follow-up prompts.
 - backups/ stores timestamped backups created before important overwrites.

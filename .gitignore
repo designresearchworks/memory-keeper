@@ -4,7 +4,10 @@
 /app-config.json
 
 # Live private archive data
-/memory-keeper-data-store/
+/archives/*
+!/archives/.gitkeep
+/deleted-archive-backups/*
+!/deleted-archive-backups/.gitkeep
 
 # Generated distributable build
 ../transfer_build/

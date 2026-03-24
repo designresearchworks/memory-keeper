@@ -6,5 +6,7 @@
   "modelRouting": "auto",
   "modelOverride": null,
   "port": 8787,
-  "debugMode": false
+  "debugMode": false,
+  "activeArchiveId": null,
+  "archives": []
 }

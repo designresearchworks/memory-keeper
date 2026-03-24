@@ -16,15 +16,23 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import {
+  APP_CONFIG_PATH,
+  APP_ROOT,
+  ARCHIVE_DIR_NAME,
+  createArchiveFromTemplate,
+  deleteArchive,
+  ensureArchiveRegistry,
+  getActiveArchivePaths,
+  getArchivePaths,
+  loadAppConfig,
+  renameArchive,
+  saveAppConfig,
+  writeJsonFile as writeArchiveLayoutJsonFile
+} from "./archive-layout.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const APP_ROOT = path.resolve(__dirname, "..");
-const DATA_STORE_ROOT = path.join(APP_ROOT, "memory-keeper-data-store");
-const TEMPLATE_DATA_STORE_ROOT = path.join(APP_ROOT, "templates-for-blank-build", "memory-keeper-data-store");
-const APP_CONFIG_PATH = path.join(APP_ROOT, "app-config.json");
-const ARCHIVE_CONFIG_PATH = path.join(DATA_STORE_ROOT, "archive-config.json");
-const BACKUPS_ROOT = path.join(DATA_STORE_ROOT, "backups");
 const port = Number(process.env.PORT || 8787);
 const STARTUP_CHECK_TIMEOUT_MS = 8000;
 const execFileAsync = promisify(execFile);
@@ -65,11 +73,11 @@ const ALLOWED_PREFIXES = [
   "follow-ups.md",
   "system-prompts/",
   "stories/",
-  "memory-keeper-data-store/archive-config.json",
-  "memory-keeper-data-store/reference/",
-  "memory-keeper-data-store/stories/",
-  "memory-keeper-data-store/meta-stories/",
-  "memory-keeper-data-store/backups/"
+  `${ARCHIVE_DIR_NAME}/archive-config.json`,
+  `${ARCHIVE_DIR_NAME}/reference/`,
+  `${ARCHIVE_DIR_NAME}/stories/`,
+  `${ARCHIVE_DIR_NAME}/meta-stories/`,
+  `${ARCHIVE_DIR_NAME}/backups/`
 ];
 
 function sendJson(response, statusCode, payload) {
@@ -105,14 +113,23 @@ function isAllowedRelativePath(relativePath) {
   return ALLOWED_PREFIXES.some((prefix) => relativePath === prefix || relativePath.startsWith(prefix));
 }
 
-function resolveManagedPath(inputPath) {
+async function resolveManagedPath(inputPath) {
   const relativePath = normalizeRelativePath(inputPath);
   if (!isAllowedRelativePath(relativePath)) {
     throw new Error("Path is outside the managed archive.");
   }
-  const resolved = path.resolve(APP_ROOT, relativePath);
-  if (!resolved.startsWith(APP_ROOT)) {
-    throw new Error("Resolved path escaped the app root.");
+  if (relativePath === "app-config.json") {
+    return { relativePath, resolved: APP_CONFIG_PATH };
+  }
+  const archivePaths = await getActiveArchivePaths();
+  const archiveRelativePrefix = `${ARCHIVE_DIR_NAME}/`;
+  if (!relativePath.startsWith(archiveRelativePrefix)) {
+    throw new Error("Managed path must resolve within the active archive.");
+  }
+  const archiveRelativePath = relativePath.slice(archiveRelativePrefix.length);
+  const resolved = path.resolve(archivePaths.dataStoreRoot, archiveRelativePath);
+  if (!resolved.startsWith(archivePaths.dataStoreRoot)) {
+    throw new Error("Resolved path escaped the active archive.");
   }
   return { relativePath, resolved };
 }
@@ -168,11 +185,12 @@ function sanitizeAppConfig(appConfig = {}) {
     assemblyAiConfigured: Boolean(String(appConfig?.assemblyAiApiKey || "").trim()),
     modelRouting: appConfig?.modelRouting || "auto",
     modelOverride: appConfig?.modelOverride || null,
-    designTheme: appConfig?.designTheme || "og",
     port: Number(appConfig?.port || port) || port,
     debugMode: Boolean(appConfig?.debugMode),
     dynamicPipelineStatusMessages: appConfig?.dynamicPipelineStatusMessages !== false,
-    taskMaxTokens: appConfig?.taskMaxTokens || null
+    taskMaxTokens: appConfig?.taskMaxTokens || null,
+    activeArchiveId: appConfig?.activeArchiveId || null,
+    archives: Array.isArray(appConfig?.archives) ? appConfig.archives : []
   };
 }
 
@@ -206,6 +224,14 @@ async function logServerDebugEvent(payload) {
 async function writeJsonFile(filePath, value) {
   await ensureParentDirectory(filePath);
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+async function listArchivesPayload() {
+  const appConfig = await ensureArchiveRegistry();
+  return {
+    activeArchiveId: appConfig.activeArchiveId || null,
+    archives: Array.isArray(appConfig.archives) ? appConfig.archives : []
+  };
 }
 
 function timestampForFilename(date = new Date()) {
@@ -276,7 +302,7 @@ async function findArchiveRoots(rootDir) {
       if (entry.name === "__MACOSX") {
         continue;
       }
-      if (entry.name === "memory-keeper-data-store") {
+      if (entry.name === ARCHIVE_DIR_NAME) {
         matches.push(nextPath);
         continue;
       }
@@ -304,21 +330,22 @@ async function validateImportedArchiveRoot(rootDir) {
       missingDirs.length ? `Missing directories: ${missingDirs.join(", ")}` : "",
       missingFiles.length ? `Missing files: ${missingFiles.join(", ")}` : ""
     ].filter(Boolean).join(". ");
-    throw new Error(`The imported zip does not contain a valid memory-keeper-data-store structure. ${details}`);
+    throw new Error(`The imported zip does not contain a valid ${ARCHIVE_DIR_NAME} structure. ${details}`);
   }
 }
 
-async function exportArchiveZip() {
-  if (!fs.existsSync(DATA_STORE_ROOT)) {
+async function exportArchiveZip(archiveId = "") {
+  const archivePaths = archiveId ? getArchivePaths(archiveId) : await getActiveArchivePaths();
+  if (!fs.existsSync(archivePaths.dataStoreRoot)) {
     throw new Error("The local archive is not available yet.");
   }
   return withTempDir("memory-keeper-export-", async (tempDir) => {
-    const storytellerName = String((await readJsonFile(ARCHIVE_CONFIG_PATH, {}))?.storytellerName || "").trim();
+    const storytellerName = String((await readJsonFile(archivePaths.archiveConfigPath, {}))?.storytellerName || "").trim();
     const zipFileName = storytellerName
-      ? `${storytellerName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "archive"}-memory-keeper-data-store-${timestampForFilename()}.zip`
-      : `memory-keeper-data-store-${timestampForFilename()}.zip`;
+      ? `${storytellerName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "archive"}-${ARCHIVE_DIR_NAME}-${timestampForFilename()}.zip`
+      : `${ARCHIVE_DIR_NAME}-${timestampForFilename()}.zip`;
     const zipPath = path.join(tempDir, zipFileName);
-    await createArchiveZip(DATA_STORE_ROOT, zipPath);
+    await createArchiveZip(archivePaths.dataStoreRoot, zipPath);
     return {
       fileName: zipFileName,
       content: await readFile(zipPath)
@@ -334,51 +361,40 @@ async function importArchiveZip(zipBuffer) {
   return withTempDir("memory-keeper-import-", async (tempDir) => {
     const zipPath = path.join(tempDir, "archive-import.zip");
     const extractDir = path.join(tempDir, "extracted");
-    const displacedRoot = path.join(tempDir, "displaced-memory-keeper-data-store");
     await mkdir(extractDir, { recursive: true });
     await writeFile(zipPath, zipBuffer);
     await extractArchiveZip(zipPath, extractDir);
 
     const archiveRoots = await findArchiveRoots(extractDir);
     if (!archiveRoots.length) {
-      throw new Error("The uploaded zip does not contain a memory-keeper-data-store folder.");
+      throw new Error(`The uploaded zip does not contain a ${ARCHIVE_DIR_NAME} folder.`);
     }
     if (archiveRoots.length > 1) {
-      throw new Error("The uploaded zip contains more than one memory-keeper-data-store folder.");
+      throw new Error(`The uploaded zip contains more than one ${ARCHIVE_DIR_NAME} folder.`);
     }
 
     const importedRoot = archiveRoots[0];
     await validateImportedArchiveRoot(importedRoot);
-
-    const hadExistingArchive = fs.existsSync(DATA_STORE_ROOT);
-    let backupPath = "";
-    try {
-      if (hadExistingArchive) {
-        await rename(DATA_STORE_ROOT, displacedRoot);
-      }
-
-      await cp(importedRoot, DATA_STORE_ROOT, { recursive: true });
-
-      if (hadExistingArchive) {
-        backupPath = path.join(
-          DATA_STORE_ROOT,
-          "backups",
-          `import-overwrite-backup-${timestampForFilename()}`
-        );
-        await mkdir(backupPath, { recursive: true });
-        await cp(displacedRoot, path.join(backupPath, "memory-keeper-data-store"), { recursive: true });
-        await rm(displacedRoot, { recursive: true, force: true });
-      }
-    } catch (error) {
-      if (!fs.existsSync(DATA_STORE_ROOT) && fs.existsSync(displacedRoot)) {
-        await rename(displacedRoot, DATA_STORE_ROOT);
-      }
-      throw error;
-    }
+    const importedConfig = await readJsonFile(path.join(importedRoot, "archive-config.json"), {});
+    const storytellerName = String(importedConfig?.storytellerName || "").trim();
+    const createdArchive = await createArchiveFromTemplate({
+      archiveId: storytellerName || `imported-${timestampForFilename()}`,
+      label: storytellerName || "Imported Archive"
+    });
+    const createdArchivePaths = await getActiveArchivePaths({
+      ...(await loadAppConfig()),
+      activeArchiveId: createdArchive.id
+    });
+    await rm(createdArchivePaths.dataStoreRoot, { recursive: true, force: true });
+    await cp(importedRoot, createdArchivePaths.dataStoreRoot, { recursive: true });
+    const appConfig = await loadAppConfig();
+    await saveAppConfig({
+      ...appConfig,
+      activeArchiveId: createdArchive.id
+    });
 
     return {
-      hadExistingArchive,
-      backupPath: backupPath ? path.relative(APP_ROOT, backupPath).replace(/\\/g, "/") : "",
+      createdArchive,
       status: await getArchiveStatus()
     };
   });
@@ -628,15 +644,15 @@ async function handleOpenRouterStream(request, response) {
 }
 
 async function ensureArchiveFromTemplate() {
-  if (fs.existsSync(DATA_STORE_ROOT)) {
-    return { created: false };
+  const appConfig = await ensureArchiveRegistry();
+  if (appConfig.archives.length) {
+    return { created: false, archive: appConfig.archives.find((entry) => entry.id === appConfig.activeArchiveId) || null };
   }
-  if (!fs.existsSync(TEMPLATE_DATA_STORE_ROOT)) {
-    throw new Error("Blank archive template is missing.");
-  }
-  await mkdir(path.dirname(DATA_STORE_ROOT), { recursive: true });
-  await cp(TEMPLATE_DATA_STORE_ROOT, DATA_STORE_ROOT, { recursive: true });
-  return { created: true };
+  const archive = await createArchiveFromTemplate({
+    archiveId: "archive-1",
+    label: "Archive 1"
+  });
+  return { created: true, archive };
 }
 
 async function collectFiles(rootPath, prefix = "") {
@@ -669,8 +685,9 @@ async function listManagedFiles() {
       modifiedAt: info.mtime.toISOString()
     });
   }
-  if (fs.existsSync(DATA_STORE_ROOT)) {
-    const archiveEntries = await collectFiles(DATA_STORE_ROOT, "memory-keeper-data-store");
+  const archivePaths = await getActiveArchivePaths();
+  if (fs.existsSync(archivePaths.dataStoreRoot)) {
+    const archiveEntries = await collectFiles(archivePaths.dataStoreRoot, ARCHIVE_DIR_NAME);
     results.push(...archiveEntries);
   }
   return results.sort((left, right) => left.path.localeCompare(right.path));
@@ -715,10 +732,11 @@ function parseBackupEntry(relativePath) {
 }
 
 async function listBackups() {
-  if (!fs.existsSync(BACKUPS_ROOT)) {
+  const archivePaths = await getActiveArchivePaths();
+  if (!fs.existsSync(archivePaths.backupsRoot)) {
     return [];
   }
-  const entries = await collectFiles(BACKUPS_ROOT, "memory-keeper-data-store/backups");
+  const entries = await collectFiles(archivePaths.backupsRoot, `${ARCHIVE_DIR_NAME}/backups`);
   return entries
     .filter((entry) => entry.path.endsWith(".md"))
     .map((entry) => parseBackupEntry(entry.path))
@@ -731,8 +749,8 @@ async function restoreBackup(backupPath) {
   if (!backup?.targetPath) {
     throw new Error("Backup path could not be resolved.");
   }
-  const source = resolveManagedPath(backup.path).resolved;
-  const target = resolveManagedPath(backup.targetPath).resolved;
+  const source = (await resolveManagedPath(backup.path)).resolved;
+  const target = (await resolveManagedPath(backup.targetPath)).resolved;
   const content = await readFile(source, "utf8");
   await ensureParentDirectory(target);
   await writeFile(target, content, "utf8");
@@ -740,11 +758,13 @@ async function restoreBackup(backupPath) {
 }
 
 async function getArchiveStatus() {
-  const archiveConfig = await readJsonFile(ARCHIVE_CONFIG_PATH, {});
-  const profilePath = path.join(DATA_STORE_ROOT, "reference", "profile.md");
-  const styleGuidePath = path.join(DATA_STORE_ROOT, "reference", "style-guide.md");
-  const storyIndexPath = path.join(DATA_STORE_ROOT, "meta-stories", "story-index.md");
-  const storiesPath = path.join(DATA_STORE_ROOT, "stories");
+  const appConfig = await ensureArchiveRegistry();
+  const archivePaths = await getActiveArchivePaths(appConfig);
+  const archiveConfig = await readJsonFile(archivePaths.archiveConfigPath, {});
+  const profilePath = path.join(archivePaths.referenceDir, "profile.md");
+  const styleGuidePath = path.join(archivePaths.referenceDir, "style-guide.md");
+  const storyIndexPath = path.join(archivePaths.metaStoriesDir, "story-index.md");
+  const storiesPath = archivePaths.storiesDir;
 
   let storyCount = Number(archiveConfig?.storyCount || 0);
   if (fs.existsSync(storiesPath)) {
@@ -753,7 +773,8 @@ async function getArchiveStatus() {
   }
 
   return {
-    archivePresent: fs.existsSync(DATA_STORE_ROOT),
+    archivePresent: fs.existsSync(archivePaths.dataStoreRoot),
+    activeArchiveId: appConfig.activeArchiveId,
     profilePresent: fs.existsSync(profilePath),
     styleGuidePresent: fs.existsSync(styleGuidePath),
     storyIndexPresent: fs.existsSync(storyIndexPath),
@@ -777,25 +798,26 @@ async function checkAssemblyAiStatus() {
 }
 
 async function getStartupCheck() {
+  const archivePaths = await getActiveArchivePaths();
   const archiveStatus = await getArchiveStatus();
   const pathChecks = {
     appRoot: APP_ROOT,
     html: fs.existsSync(path.join(APP_ROOT, "html")),
     scripts: fs.existsSync(path.join(APP_ROOT, "scripts")),
     systemPrompts: fs.existsSync(path.join(APP_ROOT, "system-prompts")),
-    dataStore: fs.existsSync(DATA_STORE_ROOT),
-    referenceDir: fs.existsSync(path.join(DATA_STORE_ROOT, "reference")),
-    storiesDir: fs.existsSync(path.join(DATA_STORE_ROOT, "stories")),
-    metaStoriesDir: fs.existsSync(path.join(DATA_STORE_ROOT, "meta-stories")),
-    backupsDir: fs.existsSync(path.join(DATA_STORE_ROOT, "backups"))
+    dataStore: fs.existsSync(archivePaths.dataStoreRoot),
+    referenceDir: fs.existsSync(archivePaths.referenceDir),
+    storiesDir: fs.existsSync(archivePaths.storiesDir),
+    metaStoriesDir: fs.existsSync(archivePaths.metaStoriesDir),
+    backupsDir: fs.existsSync(archivePaths.backupsRoot)
   };
   const fileChecks = {
     appConfig: fs.existsSync(APP_CONFIG_PATH),
-    archiveConfig: fs.existsSync(ARCHIVE_CONFIG_PATH),
-    profile: fs.existsSync(path.join(DATA_STORE_ROOT, "reference", "profile.md")),
-    styleGuide: fs.existsSync(path.join(DATA_STORE_ROOT, "reference", "style-guide.md")),
-    storyIndex: fs.existsSync(path.join(DATA_STORE_ROOT, "meta-stories", "story-index.md")),
-    followUps: fs.existsSync(path.join(DATA_STORE_ROOT, "meta-stories", "follow-ups.md"))
+    archiveConfig: fs.existsSync(archivePaths.archiveConfigPath),
+    profile: fs.existsSync(path.join(archivePaths.referenceDir, "profile.md")),
+    styleGuide: fs.existsSync(path.join(archivePaths.referenceDir, "style-guide.md")),
+    storyIndex: fs.existsSync(path.join(archivePaths.metaStoriesDir, "story-index.md")),
+    followUps: fs.existsSync(path.join(archivePaths.metaStoriesDir, "follow-ups.md"))
   };
   const openRouter = await checkOpenRouterStatus();
   const assemblyAi = await checkAssemblyAiStatus();
@@ -854,6 +876,7 @@ async function handleAssemblyToken(request, response) {
 }
 
 async function handleApi(request, response) {
+  await ensureArchiveRegistry();
   const url = new URL(request.url || "/", `http://${request.headers.host || "127.0.0.1"}`);
   const pathname = url.pathname;
 
@@ -869,7 +892,7 @@ async function handleApi(request, response) {
 
   if (request.method === "POST" && pathname === "/api/app-config") {
     const body = await readJsonBody(request);
-    const existing = await readJsonFile(APP_CONFIG_PATH, {});
+    const existing = await loadAppConfig();
     const config = {
       ...existing,
       ...body
@@ -880,7 +903,7 @@ async function handleApi(request, response) {
     if (!Object.prototype.hasOwnProperty.call(body || {}, "assemblyAiApiKey")) {
       config.assemblyAiApiKey = existing?.assemblyAiApiKey ?? null;
     }
-    await writeJsonFile(APP_CONFIG_PATH, config);
+    await saveAppConfig(config);
     await logServerDebugEvent({
       scope: "Server",
       title: "Updated app-config.json",
@@ -893,7 +916,7 @@ async function handleApi(request, response) {
 
   if (request.method === "POST" && pathname === "/api/credentials") {
     const body = await readJsonBody(request);
-    const existing = await readJsonFile(APP_CONFIG_PATH, {});
+    const existing = await loadAppConfig();
     const requestedOpenRouterApiKey = typeof body?.openRouterApiKey === "string"
       ? (String(body.openRouterApiKey || "").trim() || null)
       : (existing?.openRouterApiKey ?? null);
@@ -915,7 +938,7 @@ async function handleApi(request, response) {
       openRouterApiKey: requestedOpenRouterApiKey,
       assemblyAiApiKey: requestedAssemblyAiApiKey
     };
-    await writeJsonFile(APP_CONFIG_PATH, config);
+    await saveAppConfig(config);
     await logServerDebugEvent({
       scope: "Server",
       title: "Updated credentials",
@@ -943,14 +966,93 @@ async function handleApi(request, response) {
     return true;
   }
 
+  if (request.method === "GET" && pathname === "/api/archives") {
+    sendJson(response, 200, await listArchivesPayload());
+    return true;
+  }
+
+  if (request.method === "POST" && pathname === "/api/archives/switch") {
+    const body = await readJsonBody(request);
+    const archiveId = String(body?.archiveId || "").trim();
+    const appConfig = await loadAppConfig();
+    if (!archiveId || !appConfig.archives.some((entry) => entry.id === archiveId)) {
+      sendJson(response, 400, { error: "Unknown archive id." });
+      return true;
+    }
+    await saveAppConfig({
+      ...appConfig,
+      activeArchiveId: archiveId
+    });
+    sendJson(response, 200, {
+      ok: true,
+      ...await listArchivesPayload(),
+      status: await getArchiveStatus()
+    });
+    return true;
+  }
+
+  if (request.method === "POST" && pathname === "/api/archives/create") {
+    const body = await readJsonBody(request);
+    const archive = await createArchiveFromTemplate({
+      archiveId: String(body?.id || "").trim(),
+      label: String(body?.label || "").trim() || "New Archive"
+    });
+    const shouldActivate = body?.setActive !== false;
+    if (shouldActivate) {
+      const appConfig = await loadAppConfig();
+      await saveAppConfig({
+        ...appConfig,
+        activeArchiveId: archive.id
+      });
+    }
+    sendJson(response, 200, {
+      ok: true,
+      archive,
+      ...await listArchivesPayload(),
+      status: await getArchiveStatus()
+    });
+    return true;
+  }
+
+  if (request.method === "POST" && pathname === "/api/archives/rename") {
+    const body = await readJsonBody(request);
+    const archive = await renameArchive({
+      archiveId: String(body?.archiveId || "").trim(),
+      label: String(body?.label || "").trim()
+    });
+    sendJson(response, 200, {
+      ok: true,
+      archive,
+      ...await listArchivesPayload(),
+      status: await getArchiveStatus()
+    });
+    return true;
+  }
+
+  if (request.method === "POST" && pathname === "/api/archives/delete") {
+    const body = await readJsonBody(request);
+    const result = await deleteArchive({
+      archiveId: String(body?.archiveId || "").trim()
+    });
+    sendJson(response, 200, {
+      ok: true,
+      ...result,
+      ...await listArchivesPayload(),
+      status: await getArchiveStatus()
+    });
+    return true;
+  }
+
   if (request.method === "GET" && pathname === "/api/archive-config") {
-    sendJson(response, 200, await readJsonFile(ARCHIVE_CONFIG_PATH, null));
+    const archivePaths = await getActiveArchivePaths();
+    sendJson(response, 200, await readJsonFile(archivePaths.archiveConfigPath, null));
     return true;
   }
 
   if (request.method === "POST" && pathname === "/api/archive-config") {
     const body = await readJsonBody(request);
-    await writeJsonFile(ARCHIVE_CONFIG_PATH, body);
+    const archivePaths = await getActiveArchivePaths();
+    await writeArchiveLayoutJsonFile(archivePaths.archiveConfigPath, body);
     await logServerDebugEvent({
       scope: "Server",
       title: "Updated archive-config.json",
@@ -977,7 +1079,7 @@ async function handleApi(request, response) {
       scope: "Server",
       title: "Ensured archive from template",
       status: result.created ? "create" : "ok",
-      detail: result.created ? "Created memory-keeper-data-store from the blank template." : "Archive already existed."
+      detail: result.created ? `Created ${ARCHIVE_DIR_NAME} from the blank template.` : "Archive already existed."
     });
     sendJson(response, 200, { ok: true, ...result, status: await getArchiveStatus() });
     return true;
@@ -1001,6 +1103,23 @@ async function handleApi(request, response) {
     return true;
   }
 
+  if (request.method === "GET" && pathname === "/api/archives/export") {
+    const archiveId = String(url.searchParams.get("archiveId") || "").trim();
+    if (!archiveId) {
+      sendJson(response, 400, { error: "Missing archive id." });
+      return true;
+    }
+    const payload = await exportArchiveZip(archiveId);
+    response.writeHead(200, {
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="${payload.fileName}"`,
+      "Content-Length": payload.content.length,
+      "Cache-Control": "no-store"
+    });
+    response.end(payload.content);
+    return true;
+  }
+
   if (request.method === "POST" && pathname === "/api/archive/import") {
     const zipBuffer = await readRawBody(request);
     const result = await importArchiveZip(zipBuffer);
@@ -1009,11 +1128,18 @@ async function handleApi(request, response) {
       title: "Imported archive zip",
       status: "restore",
       detail: [
-        result.hadExistingArchive ? "Replaced existing archive." : "Imported into an empty archive slot.",
-        result.backupPath ? `Backup: ${result.backupPath}` : ""
+        `Created archive: ${result.createdArchive?.id || "unknown"}`,
+        "Imported archive is now active."
       ].filter(Boolean).join("\n")
     });
     sendJson(response, 200, { ok: true, ...result });
+    return true;
+  }
+
+  if (request.method === "POST" && pathname === "/api/archives/import") {
+    const zipBuffer = await readRawBody(request);
+    const result = await importArchiveZip(zipBuffer);
+    sendJson(response, 200, { ok: true, ...result, ...await listArchivesPayload() });
     return true;
   }
 
@@ -1033,7 +1159,7 @@ async function handleApi(request, response) {
       sendJson(response, 400, { error: "Missing file path." });
       return true;
     }
-    const { resolved } = resolveManagedPath(inputPath);
+    const { resolved } = await resolveManagedPath(inputPath);
     const content = await readFile(resolved, "utf8");
     sendText(response, 200, content);
     return true;
@@ -1047,7 +1173,7 @@ async function handleApi(request, response) {
       sendJson(response, 400, { error: "Missing file path." });
       return true;
     }
-    const { resolved, relativePath } = resolveManagedPath(inputPath);
+    const { resolved, relativePath } = await resolveManagedPath(inputPath);
     const existed = fs.existsSync(resolved);
     if (existed && body?.allowOverwrite === false) {
       sendJson(response, 409, { error: "File already exists." });
@@ -1071,7 +1197,7 @@ async function handleApi(request, response) {
       sendJson(response, 400, { error: "Missing file path." });
       return true;
     }
-    const { resolved } = resolveManagedPath(inputPath);
+    const { resolved } = await resolveManagedPath(inputPath);
     sendJson(response, 200, { exists: fs.existsSync(resolved) });
     return true;
   }
@@ -1095,7 +1221,7 @@ async function handleApi(request, response) {
       sendJson(response, 400, { error: "Missing file path." });
       return true;
     }
-    const { resolved } = resolveManagedPath(inputPath);
+    const { resolved } = await resolveManagedPath(inputPath);
     await rm(resolved, { force: true });
     await logServerDebugEvent({
       scope: "Server",

@@ -1,49 +1,30 @@
-import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline/promises";
 import { spawn } from "node:child_process";
 import { stdin as input, stdout as output } from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+  APP_ROOT,
+  APP_CONFIG_PATH,
+  DEFAULT_APP_CONFIG,
+  ensureArchiveRegistry,
+  saveAppConfig
+} from "./archive-layout.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const APP_ROOT = path.resolve(__dirname, "..");
-const APP_CONFIG_PATH = path.join(APP_ROOT, "app-config.json");
-const TEMPLATE_ROOT = path.join(APP_ROOT, "templates-for-blank-build", "memory-keeper-data-store");
-const DATA_STORE_ROOT = path.join(APP_ROOT, "memory-keeper-data-store");
-const DEFAULT_APP_CONFIG = {
-  version: "1.0",
-  createdAt: "",
-  openRouterApiKey: null,
-  assemblyAiApiKey: null,
-  modelRouting: "auto",
-  modelOverride: null,
-  port: 8787,
-  debugMode: false
-};
 
 function log(message) {
   output.write(`${String(message)}\n`);
 }
 
-async function ensureAppConfig() {
-  if (!existsSync(APP_CONFIG_PATH)) {
-    const config = {
-      ...DEFAULT_APP_CONFIG,
-      createdAt: new Date().toISOString()
-    };
-    await writeFile(APP_CONFIG_PATH, JSON.stringify(config, null, 2), "utf8");
-  }
-}
-
 async function loadAppConfig() {
-  await ensureAppConfig();
-  return JSON.parse(await readFile(APP_CONFIG_PATH, "utf8"));
-}
-
-async function saveAppConfig(config) {
-  await writeFile(APP_CONFIG_PATH, JSON.stringify(config, null, 2), "utf8");
+  const raw = JSON.parse(await readFile(APP_CONFIG_PATH, "utf8"));
+  return {
+    ...DEFAULT_APP_CONFIG,
+    ...raw
+  };
 }
 
 async function validateOpenRouterApiKey(apiKey) {
@@ -102,16 +83,6 @@ async function validateAssemblyAiApiKey(apiKey) {
       working: false,
       message: error?.message || String(error)
     };
-  }
-}
-
-async function ensureDataStoreFromTemplate() {
-  if (!existsSync(DATA_STORE_ROOT)) {
-    if (!existsSync(TEMPLATE_ROOT)) {
-      throw new Error(`Could not find the blank template at ${TEMPLATE_ROOT}`);
-    }
-    await mkdir(path.dirname(DATA_STORE_ROOT), { recursive: true });
-    await cp(TEMPLATE_ROOT, DATA_STORE_ROOT, { recursive: true });
   }
 }
 
@@ -177,10 +148,11 @@ async function ensureKeys(config) {
 }
 
 async function ensureArchiveTemplateExists() {
-  await ensureDataStoreFromTemplate();
+  await ensureArchiveRegistry();
 }
 
 async function main() {
+  await ensureArchiveRegistry();
   const config = await loadAppConfig();
   await ensureKeys(config);
   await ensureArchiveTemplateExists();

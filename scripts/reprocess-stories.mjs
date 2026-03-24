@@ -1,12 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { APP_ROOT, ensureArchiveRegistry, getActiveArchivePaths, loadAppConfig } from "./archive-layout.mjs";
 
-const APP_ROOT = "/Users/Joseph/memory-keeper/dev-build";
-const DATA_ROOT = path.join(APP_ROOT, "memory-keeper-data-store");
-const APP_CONFIG_PATH = path.join(APP_ROOT, "app-config.json");
-const ARCHIVE_CONFIG_PATH = path.join(DATA_ROOT, "archive-config.json");
-const STORIES_DIR = path.join(DATA_ROOT, "stories");
-const INDEX_PATH = path.join(DATA_ROOT, "meta-stories", "story-index.md");
 const INDEX_HEADER = "# Memory Keeper — Story Index";
 const REWRITE_MODEL = "anthropic/claude-opus-4.6";
 const SUMMARY_MODEL = "anthropic/claude-sonnet-4.6";
@@ -170,8 +165,10 @@ async function callOpenRouter({ apiKey, model, systemPrompt, userText }) {
 }
 
 async function main() {
-  const appConfig = JSON.parse(await readText(APP_CONFIG_PATH));
-  const archiveConfig = JSON.parse(await readText(ARCHIVE_CONFIG_PATH));
+  await ensureArchiveRegistry();
+  const appConfig = await loadAppConfig();
+  const archivePaths = await getActiveArchivePaths(appConfig);
+  const archiveConfig = JSON.parse(await readText(archivePaths.archiveConfigPath));
   const apiKey = process.env.OPENROUTER_API_KEY || String(appConfig.openRouterApiKey || "").trim();
   if (!apiKey) {
     throw new Error("No OpenRouter API key available.");
@@ -179,13 +176,13 @@ async function main() {
 
   const updatePromptTemplate = await readText(path.join(APP_ROOT, "system-prompts/update-story.md"));
   const summaryPromptTemplate = await readText(path.join(APP_ROOT, "system-prompts/summary-generation.md"));
-  const styleGuide = await readText(path.join(DATA_ROOT, "reference", "style-guide.md"));
+  const styleGuide = await readText(path.join(archivePaths.referenceDir, "style-guide.md"));
   const vibes = await readText(path.join(APP_ROOT, "system-prompts/joevibes.md")).catch(() => "");
-  const currentIndex = await readText(INDEX_PATH);
+  const currentIndex = await readText(path.join(archivePaths.metaStoriesDir, "story-index.md"));
   const storytellerNameMatch = currentIndex.match(/^# Storyteller:\s*(.+)$/m);
   const storytellerName = storytellerNameMatch ? storytellerNameMatch[1].trim() : (archiveConfig.storytellerName || "Storyteller");
   const orderedPaths = parseIndexOrder(currentIndex);
-  const storyFiles = (await fs.readdir(STORIES_DIR))
+  const storyFiles = (await fs.readdir(archivePaths.storiesDir))
     .filter((name) => name.endsWith(".md"))
     .map((name) => `stories/${name}`)
     .sort();
@@ -193,7 +190,7 @@ async function main() {
 
   const rewrittenStories = [];
   for (const relativePath of fileOrder) {
-    const absolutePath = path.join(DATA_ROOT, relativePath);
+    const absolutePath = path.join(archivePaths.dataStoreRoot, relativePath);
     const originalContent = await readText(absolutePath);
     const original = parseStoryMarkdown(originalContent);
     console.log(`Reprocessing ${relativePath}...`);
@@ -258,7 +255,7 @@ async function main() {
   const storyByPath = new Map(rewrittenStories.map((story) => [story.filePath, story]));
   const orderedStories = fileOrder.map((relativePath) => storyByPath.get(relativePath)).filter(Boolean);
   const rebuiltIndex = buildIndex(storytellerName, orderedStories);
-  await fs.writeFile(INDEX_PATH, rebuiltIndex, "utf8");
+  await fs.writeFile(path.join(archivePaths.metaStoriesDir, "story-index.md"), rebuiltIndex, "utf8");
   console.log(`Reprocessed ${orderedStories.length} stories and rebuilt story-index.md`);
 }
 

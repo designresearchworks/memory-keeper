@@ -194,7 +194,7 @@
       </div>
       <div class="panel-section hidden">
         <h2>Sharing & Export</h2>
-        <p>The archive is the whole Memory Keeper folder. To share it, copy the entire folder and keep <code>app-config.json</code> at the top level, with <code>memory-keeper-data-store/</code> containing the stories, reference files, metadata, and backups.</p>
+        <p>The app now keeps archives under <code>archives/</code>. To share the full setup, copy the whole Memory Keeper folder and keep <code>app-config.json</code> at the top level.</p>
         <p>The person receiving it can open that folder in Memory Keeper, add their own API keys in settings, and continue from the same files.</p>
       </div>
     </details>
@@ -275,6 +275,30 @@
       </div>
     </details>
 
+    <details class="panel panel-collapsible" id="archiveManagementPanel">
+      <summary>Archive Management</summary>
+      <div class="panel-section">
+        <div class="row" style="justify-content: space-between; margin-bottom: 10px; align-items: center;">
+          <div class="hint" id="archiveManagementSummary">No archive information loaded yet.</div>
+        </div>
+        <div class="row" style="margin-bottom: 12px; align-items: end;">
+          <div class="field" style="flex: 1 1 260px; margin: 0;">
+            <label for="newArchiveLabelInput">New archive label</label>
+            <input id="newArchiveLabelInput" type="text" placeholder="Family Archive">
+          </div>
+          <button id="createArchiveButton" type="button" class="button-secondary">Create New Archive</button>
+        </div>
+        <div class="status-line" id="archiveManagementStatus">Create a new archive or switch between available archives.</div>
+        <div class="storyteller-list" id="archiveManagementList"></div>
+        <div class="row" style="margin-bottom: 12px; margin-top: 14px;">
+          <button id="importArchiveButton" type="button" class="button-secondary">Import Archive</button>
+          <input id="importArchiveInput" type="file" accept=".zip,application/zip" class="hidden" aria-hidden="true">
+        </div>
+        <div class="hint" style="margin-bottom: 10px;">Import validates a zip and creates a new archive from it.</div>
+        <div class="status-line" id="archiveTransferStatus">Use this section to move a whole archive between Memory Keeper installs.</div>
+      </div>
+    </details>
+
     <details class="panel panel-collapsible" id="houseKeepingDetails">
       <summary>Housekeeping</summary>
       <div class="panel-section">
@@ -286,18 +310,6 @@
           <button id="refreshConnectionsButton" type="button" class="button-secondary">Refresh Connections</button>
         </div>
         <div class="status-line" id="styleGuideStatus"></div>
-        <details class="settings-subsection" id="archiveTransferDetails" style="margin-top: 14px;">
-          <summary>Archive Import & Export</summary>
-          <div class="settings-subsection-body">
-            <div class="row" style="margin-bottom: 12px;">
-              <button id="exportArchiveButton" type="button" class="button-secondary">Export Archive</button>
-              <button id="importArchiveButton" type="button" class="button-secondary">Import Archive</button>
-              <input id="importArchiveInput" type="file" accept=".zip,application/zip" class="hidden" aria-hidden="true">
-            </div>
-            <div class="hint" style="margin-bottom: 10px;">Export downloads a zip of <code>memory-keeper-data-store</code>. Import validates the zip before replacing the current archive and backs up any archive it overwrites.</div>
-            <div class="status-line" id="archiveTransferStatus">Use this section to move a whole archive between Memory Keeper installs.</div>
-          </div>
-        </details>
       </div>
     </details>
 
@@ -677,7 +689,6 @@
       assemblyAiApiKey: null,
       modelRouting: "auto",
       modelOverride: null,
-      designTheme: normaliseDesignTheme(localStorage.getItem(LOCAL_STORAGE_KEYS.designTheme) || "og"),
       port: 8787,
       debugMode: false,
       dynamicPipelineStatusMessages: true,
@@ -694,22 +705,23 @@
       profileComplete: false,
       styleGuideComplete: false,
       storyCount: 0,
+      designTheme: "og",
       backupRetentionDays: 90,
       firstRun: false
     };
 
     const PRIMARY_STORYTELLER_ID = "primary";
-    const DATA_STORE_ROOT = "memory-keeper-data-store";
+    const ACTIVE_ARCHIVE_ROOT = "memory-keeper-data-store";
     const APP_CONFIG_FILE = "app-config.json";
-    const ARCHIVE_CONFIG_FILE = `${DATA_STORE_ROOT}/archive-config.json`;
-    const REFERENCE_DIR = `${DATA_STORE_ROOT}/reference`;
-    const STORIES_DIR = `${DATA_STORE_ROOT}/stories`;
-    const META_STORIES_DIR = `${DATA_STORE_ROOT}/meta-stories`;
-    const BACKUPS_DIR = `${DATA_STORE_ROOT}/backups`;
-    const PROFILE_FILE = `${REFERENCE_DIR}/profile.md`;
-    const STYLE_GUIDE_FILE = `${REFERENCE_DIR}/style-guide.md`;
-    const STORY_INDEX_FILE = `${META_STORIES_DIR}/story-index.md`;
-    const FOLLOW_UPS_FILE = `${META_STORIES_DIR}/follow-ups.md`;
+    const ACTIVE_ARCHIVE_CONFIG_FILE = `${ACTIVE_ARCHIVE_ROOT}/archive-config.json`;
+    const ACTIVE_REFERENCE_DIR = `${ACTIVE_ARCHIVE_ROOT}/reference`;
+    const ACTIVE_STORIES_DIR = `${ACTIVE_ARCHIVE_ROOT}/stories`;
+    const ACTIVE_META_STORIES_DIR = `${ACTIVE_ARCHIVE_ROOT}/meta-stories`;
+    const ACTIVE_BACKUPS_DIR = `${ACTIVE_ARCHIVE_ROOT}/backups`;
+    const PROFILE_FILE = `${ACTIVE_REFERENCE_DIR}/profile.md`;
+    const STYLE_GUIDE_FILE = `${ACTIVE_REFERENCE_DIR}/style-guide.md`;
+    const STORY_INDEX_FILE = `${ACTIVE_META_STORIES_DIR}/story-index.md`;
+    const FOLLOW_UPS_FILE = `${ACTIVE_META_STORIES_DIR}/follow-ups.md`;
 
     const MISSING_PROMPT_PREFIX = "__MISSING_PROMPT__:";
     function buildMissingPromptPlaceholder(path) {
@@ -996,7 +1008,7 @@
       interactionSide: normaliseInteractionMode(localStorage.getItem(LOCAL_STORAGE_KEYS.interactionSide)),
       routingMode: localStorage.getItem(LOCAL_STORAGE_KEYS.routingMode) || "auto",
       modelOverride: localStorage.getItem(LOCAL_STORAGE_KEYS.modelOverride) || "",
-      designTheme: normaliseDesignTheme(localStorage.getItem(LOCAL_STORAGE_KEYS.designTheme) || "og"),
+      designTheme: "og",
       secondaryPanelsVisible: false,
       taskType: localStorage.getItem(LOCAL_STORAGE_KEYS.taskType) || "retrievalSimple",
       debugMode: localStorage.getItem(LOCAL_STORAGE_KEYS.debugMode) === "true",
@@ -1096,6 +1108,8 @@
       storyArchiveSort: "name-asc",
       backupEntries: [],
       selectedBackupPath: "",
+      archives: [],
+      activeArchiveId: "",
       firstRunPending: false,
       firstRunShown: false,
       firstRun: {
@@ -1103,7 +1117,8 @@
         saving: false,
         complete: false,
         rerunMode: false,
-        selectedTheme: normaliseDesignTheme(localStorage.getItem(LOCAL_STORAGE_KEYS.designTheme) || "og")
+        creationMode: false,
+        selectedTheme: "og"
       },
       pouyanArmed: false,
       audioInput: {
@@ -1227,9 +1242,12 @@
       storytellerNameInput: document.getElementById("storytellerNameInput"),
       storytellerSlugPreview: document.getElementById("storytellerSlugPreview"),
       styleGuideStatus: document.getElementById("styleGuideStatus"),
-      archiveTransferDetails: document.getElementById("archiveTransferDetails"),
       archiveTransferStatus: document.getElementById("archiveTransferStatus"),
-      exportArchiveButton: document.getElementById("exportArchiveButton"),
+      archiveManagementSummary: document.getElementById("archiveManagementSummary"),
+      archiveManagementStatus: document.getElementById("archiveManagementStatus"),
+      archiveManagementList: document.getElementById("archiveManagementList"),
+      newArchiveLabelInput: document.getElementById("newArchiveLabelInput"),
+      createArchiveButton: document.getElementById("createArchiveButton"),
       importArchiveButton: document.getElementById("importArchiveButton"),
       importArchiveInput: document.getElementById("importArchiveInput"),
       generateStatusSynonymsButton: document.getElementById("generateStatusSynonymsButton"),
@@ -1514,8 +1532,10 @@
     function setFirstRunThemePreview(themeValue) {
       const theme = normaliseDesignTheme(themeValue || "og");
       state.firstRun.selectedTheme = theme;
+      const previousTheme = state.designTheme;
       state.designTheme = theme;
       applyDesignTheme();
+      state.designTheme = previousTheme;
       renderFirstRunThemePreview();
     }
 
@@ -1568,10 +1588,9 @@
 
       elements.designTheme.addEventListener("change", (event) => {
         state.designTheme = String(event.target.value || "og");
-        localStorage.setItem(LOCAL_STORAGE_KEYS.designTheme, state.designTheme);
         applyDesignTheme();
         persistDesignThemeConfig(elements.designTheme).catch((error) => {
-          setStatus(elements.folderStatus, `Design theme changed, but app-config.json could not be updated: ${error.message}`, "error");
+          setStatus(elements.folderStatus, `Design theme changed, but archive-config.json could not be updated: ${error.message}`, "error");
         });
       });
 
@@ -1677,9 +1696,15 @@
 
       elements.storytellerNameInput.addEventListener("input", updateStorytellerSlugPreview);
       elements.rerunOnboardingButton.addEventListener("click", rerunOnboarding);
+      elements.createArchiveButton.addEventListener("click", createArchiveAndStartOnboarding);
+      elements.newArchiveLabelInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
+          event.preventDefault();
+          createArchiveAndStartOnboarding();
+        }
+      });
       elements.generateStatusSynonymsButton.addEventListener("click", () => generatePipelineStatusSynonyms({ overwrite: false }));
       elements.resetStatusSynonymsButton.addEventListener("click", () => generatePipelineStatusSynonyms({ overwrite: true }));
-      elements.exportArchiveButton.addEventListener("click", exportArchive);
       elements.importArchiveButton.addEventListener("click", () => {
         elements.importArchiveInput.value = "";
         elements.importArchiveInput.click();
@@ -3544,8 +3569,15 @@ ${styleGuideContent}
 
     function openFirstRunModal(options = {}) {
       state.firstRun.rerunMode = Boolean(options?.rerun);
+      state.firstRun.creationMode = Boolean(options?.creation);
       state.firstRunShown = true;
       resetFirstRunForm();
+      if (options?.storytellerName) {
+        elements.firstRunStorytellerName.value = String(options.storytellerName || "").trim();
+      }
+      if (options?.message) {
+        elements.firstRunModalMessage.textContent = options.message;
+      }
       renderFirstRunStep();
       elements.firstRunModal.classList.remove("hidden");
       elements.firstRunModal.setAttribute("aria-hidden", "false");
@@ -3553,10 +3585,15 @@ ${styleGuideContent}
     }
 
     function closeFirstRunModal() {
+      const wasCreatingArchive = state.firstRun.creationMode && !state.firstRun.complete;
       state.firstRunShown = false;
       state.firstRun.rerunMode = false;
+      state.firstRun.creationMode = false;
       elements.firstRunModal.classList.add("hidden");
       elements.firstRunModal.setAttribute("aria-hidden", "true");
+      if (wasCreatingArchive) {
+        setStatus(elements.archiveManagementStatus, "New archive created. Starter setup is still incomplete.", "success");
+      }
     }
 
     function openApiKeyModal(message = "Add your OpenRouter key to continue. AssemblyAI can be left blank for now.") {
@@ -3650,6 +3687,90 @@ ${styleGuideContent}
       setStatus(elements.styleGuideStatus, "Onboarding reopened.", "success");
     }
 
+    async function createArchiveAndStartOnboarding() {
+      if (!state.rootHandle) {
+        setStatus(elements.archiveManagementStatus, "Connect the local archive before creating another archive.", "error");
+        return;
+      }
+      const label = elements.newArchiveLabelInput.value.trim();
+      if (!label) {
+        setStatus(elements.archiveManagementStatus, "Enter a label for the new archive.", "error");
+        elements.newArchiveLabelInput.focus();
+        return;
+      }
+      try {
+        elements.createArchiveButton.disabled = true;
+        setStatus(elements.archiveManagementStatus, "Creating a new archive...", "success");
+        const result = await apiCreateArchive({ label, setActive: true });
+        elements.newArchiveLabelInput.value = "";
+        await refreshArchiveAfterChange();
+        openFirstRunModal({
+          creation: true,
+          storytellerName: result?.archive?.label || label
+        });
+        setStatus(elements.archiveManagementStatus, `Created and activated ${result?.archive?.label || label}.`, "success");
+      } catch (error) {
+        setStatus(elements.archiveManagementStatus, `Could not create the archive: ${error.message}`, "error");
+      } finally {
+        elements.createArchiveButton.disabled = false;
+      }
+    }
+
+    async function switchArchive(archiveId) {
+      if (!archiveId || archiveId === state.activeArchiveId) {
+        return;
+      }
+      try {
+        setStatus(elements.archiveManagementStatus, "Switching archive...", "success");
+        await apiSwitchArchive(archiveId);
+        await refreshArchiveAfterChange();
+        setStatus(elements.archiveManagementStatus, "Archive switched.", "success");
+      } catch (error) {
+        setStatus(elements.archiveManagementStatus, `Could not switch archives: ${error.message}`, "error");
+      }
+    }
+
+    async function renameArchive(archive) {
+      const currentLabel = String(archive?.label || archive?.id || "").trim();
+      const nextLabel = window.prompt("Rename archive", currentLabel);
+      if (nextLabel === null) {
+        return;
+      }
+      const normalizedLabel = nextLabel.trim();
+      if (!normalizedLabel || normalizedLabel === currentLabel) {
+        return;
+      }
+      try {
+        setStatus(elements.archiveManagementStatus, "Renaming archive...", "success");
+        await apiRenameArchive(archive.id, normalizedLabel);
+        await refreshArchiveAfterChange();
+        setStatus(elements.archiveManagementStatus, "Archive renamed.", "success");
+      } catch (error) {
+        setStatus(elements.archiveManagementStatus, `Could not rename archive: ${error.message}`, "error");
+      }
+    }
+
+    async function deleteArchiveEntry(archive) {
+      const confirmed = await showConfirmModal({
+        title: "Delete archive?",
+        message: `Delete ${archive?.label || archive?.id}? This removes that archive from this app.`,
+        hint: "This deletes the archive folder from disk. The last remaining archive cannot be deleted.",
+        confirmLabel: "Delete Archive",
+        cancelLabel: "Cancel"
+      });
+      if (!confirmed) {
+        return;
+      }
+      try {
+        setStatus(elements.archiveManagementStatus, "Deleting archive...", "success");
+        await apiDeleteArchive(archive.id);
+        await refreshArchiveAfterChange();
+        setStatus(elements.archiveManagementStatus, "Archive deleted.", "success");
+      } catch (error) {
+        setStatus(elements.archiveManagementStatus, `Could not delete archive: ${error.message}`, "error");
+      }
+    }
+
     function triggerDownload(blob, fileName) {
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -3661,7 +3782,7 @@ ${styleGuideContent}
       setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
     }
 
-    async function refreshArchiveAfterImport() {
+    async function refreshArchiveAfterChange() {
       await loadConfigSummary();
       await refreshPendingFollowUpCount();
       await refreshBackupList();
@@ -3680,7 +3801,7 @@ ${styleGuideContent}
       updateChatModeUI();
     }
 
-    async function exportArchive() {
+    async function exportArchive(archiveId = "") {
       if (!state.rootHandle) {
         setStatus(elements.archiveTransferStatus, "The local archive is not available yet.", "error");
         return;
@@ -3690,12 +3811,12 @@ ${styleGuideContent}
       setPipelineStatus("working", "Packaging archive export...");
       logSaveRunEvent({
         title: "Archive Export: Package Archive",
-        detail: "Building a zip of memory-keeper-data-store for download.",
+        detail: "Building a zip of the active archive for download.",
         outcome: "working"
       });
 
       try {
-        const { blob, fileName } = await apiExportArchive();
+        const { blob, fileName } = await apiExportArchive(archiveId);
         logSaveRunEvent({
           title: "Archive Export: Package Archive",
           detail: "Archive zip created successfully.",
@@ -3741,26 +3862,11 @@ ${styleGuideContent}
         return;
       }
 
-      const archiveStatus = await apiGetArchiveStatus().catch(() => ({ archivePresent: false }));
-      if (archiveStatus?.archivePresent) {
-        const confirmed = await showConfirmModal({
-          title: "Import archive?",
-          message: "Importing will replace the current memory-keeper-data-store with the uploaded archive.",
-          hint: "Before replacing it, Memory Keeper will back up the current archive inside the imported archive's backups folder.",
-          confirmLabel: "Import Archive",
-          cancelLabel: "Cancel"
-        });
-        if (!confirmed) {
-          setStatus(elements.archiveTransferStatus, "Archive import cancelled.", "success");
-          return;
-        }
-      }
-
       startSaveRun("Archive Import");
       setPipelineStatus("working", "Validating archive import...");
       logSaveRunEvent({
         title: "Archive Import: Validate Uploaded Zip",
-        detail: `Checking ${file.name} before replacing the current archive.`,
+        detail: `Checking ${file.name} before creating a new archive.`,
         outcome: "working"
       });
 
@@ -3771,27 +3877,21 @@ ${styleGuideContent}
           detail: "Uploaded archive validated successfully.",
           outcome: "complete"
         });
-        if (result?.backupPath) {
-          logSaveRunEvent({
-            title: "Archive Import: Backup Existing Archive",
-            detail: "The previous archive was backed up before replacement.",
-            filePath: result.backupPath,
-            outcome: "complete"
-          });
-        }
         logSaveRunEvent({
-          title: "Archive Import: Replace Archive",
-          detail: "Imported archive is now active.",
+          title: "Archive Import: Create Archive",
+          detail: result?.createdArchive?.label
+            ? `Imported archive is now active: ${result.createdArchive.label}.`
+            : "Imported archive is now active.",
           outcome: "complete"
         });
-        await refreshArchiveAfterImport();
+        await refreshArchiveAfterChange();
         finishSaveRun("complete", "Archive imported.");
         setPipelineStatus("complete", "Archive imported.", { dismissible: true });
         setStatus(
           elements.archiveTransferStatus,
-          result?.backupPath
-            ? `Archive imported. Previous archive backed up to ${result.backupPath}.`
-            : "Archive imported.",
+          result?.createdArchive?.label
+            ? `Archive imported as ${result.createdArchive.label} and set active.`
+            : "Archive imported and set active.",
           "success"
         );
       } catch (error) {
@@ -3813,7 +3913,8 @@ ${styleGuideContent}
       state.firstRun.step = 0;
       state.firstRun.saving = false;
       state.firstRun.complete = false;
-      state.firstRun.selectedTheme = normaliseDesignTheme(state.designTheme || localStorage.getItem(LOCAL_STORAGE_KEYS.designTheme) || "og");
+      state.firstRun.creationMode = false;
+      state.firstRun.selectedTheme = normaliseDesignTheme(state.designTheme || "og");
       elements.firstRunStorytellerName.value = "";
       elements.firstRunWritingSample.value = "";
       elements.firstRunBasicInfo.value = "";
@@ -3976,13 +4077,15 @@ ${styleGuideContent}
       const saving = state.firstRun.saving;
       elements.firstRunModalMessage.textContent = completed
         ? ""
-        : "Let's do a short setup so this archive knows who you are. Fill in the three steps below, then Memory Keeper will build the starter files for you.";
+        : state.firstRun.creationMode
+          ? "This new archive needs its starter setup. Fill in the three steps below, then Memory Keeper will build the starter files for it."
+          : "Let's do a short setup so this archive knows who you are. Fill in the three steps below, then Memory Keeper will build the starter files for you.";
       elements.firstRunStepLabel.textContent = completed ? "Setup complete" : `Step ${state.firstRun.step + 1} of 3`;
       elements.firstRunStepComplete.classList.toggle("hidden", !completed);
       elements.firstRunStepName.classList.toggle("hidden", completed || state.firstRun.step !== 0);
       elements.firstRunStepSample.classList.toggle("hidden", completed || state.firstRun.step !== 1);
       elements.firstRunStepBasics.classList.toggle("hidden", completed || state.firstRun.step !== 2);
-      elements.firstRunCancelButton.classList.toggle("hidden", !state.firstRun.rerunMode);
+      elements.firstRunCancelButton.classList.toggle("hidden", !state.firstRun.rerunMode && !state.firstRun.creationMode);
       elements.firstRunBackButton.classList.toggle("hidden", completed || state.firstRun.step === 0);
       elements.firstRunSkipSampleButton.classList.toggle("hidden", completed || state.firstRun.step !== 1);
       elements.firstRunNextButton.classList.toggle("hidden", completed || state.firstRun.step === 2);
@@ -4154,10 +4257,10 @@ ${quoted}
         };
 
         elements.firstRunModalStatus.textContent = "Creating the starter profile and style guide...";
-        await ensureDirectory(REFERENCE_DIR);
-        await ensureDirectory(STORIES_DIR);
-        await ensureDirectory(META_STORIES_DIR);
-        await ensureDirectory(BACKUPS_DIR);
+        await ensureDirectory(ACTIVE_REFERENCE_DIR);
+        await ensureDirectory(ACTIVE_STORIES_DIR);
+        await ensureDirectory(ACTIVE_META_STORIES_DIR);
+        await ensureDirectory(ACTIVE_BACKUPS_DIR);
 
         const existingArchiveConfig = await getArchiveConfigData().catch(() => null);
         const archiveConfig = {
@@ -4166,6 +4269,7 @@ ${quoted}
           storytellerName: data.storytellerName,
           profileComplete: true,
           styleGuideComplete: true,
+          designTheme: data.designTheme,
           firstRun: false
         };
 
@@ -4182,18 +4286,16 @@ ${quoted}
         if (nextIndex !== currentIndex) {
           await writeTextFile(STORY_INDEX_FILE, nextIndex, { allowOverwrite: true });
         }
-        await writeTextFile(ARCHIVE_CONFIG_FILE, JSON.stringify(archiveConfig, null, 2), { allowOverwrite: true });
+        await writeTextFile(ACTIVE_ARCHIVE_CONFIG_FILE, JSON.stringify(archiveConfig, null, 2), { allowOverwrite: true });
         await apiSaveAppConfig({
           createdAt: new Date().toISOString(),
           modelRouting: state.routingMode,
           modelOverride: state.modelOverride || null,
-          designTheme: data.designTheme,
           debugMode: Boolean(state.debugMode),
           dynamicPipelineStatusMessages: Boolean(state.dynamicPipelineStatusMessages),
           taskMaxTokens: normaliseTaskMaxTokens(state.taskMaxTokens)
         });
         state.designTheme = data.designTheme;
-        localStorage.setItem(LOCAL_STORAGE_KEYS.designTheme, state.designTheme);
         applyDesignTheme();
 
         state.firstRunPending = false;
@@ -4609,7 +4711,6 @@ ${quoted}
       elements.compactStyleGuideButton.disabled = locked || streaming;
       elements.refreshConnectionsButton.disabled = locked || streaming;
       elements.rerunOnboardingButton.disabled = locked || streaming;
-      elements.exportArchiveButton.disabled = locked || streaming;
       elements.importArchiveButton.disabled = locked || streaming;
       updateSendButtonUI();
       updateAudioUI();
@@ -6850,7 +6951,7 @@ ${quoted}
     function resolveTargetStoryPath(targetStory, sourceStories) {
       const normalized = normalizePath(targetStory);
       if (normalized && normalized !== "[unknown]" && /^stories\/.+\.md$/i.test(normalized)) {
-        return `${STORIES_DIR}/${normalized.slice("stories/".length)}`;
+        return `${ACTIVE_STORIES_DIR}/${normalized.slice("stories/".length)}`;
       }
 
       const lowered = String(targetStory || "").trim().toLowerCase();
@@ -7084,7 +7185,7 @@ ${quoted}
               ? state.pipelineStatusSynonyms
               : {};
             if (Object.keys(existingStatusSynonyms).length) {
-              const backupPath = `memory-keeper-data-store/backups/status-synonyms-${timestampForFilename(new Date())}.json`;
+              const backupPath = `${ACTIVE_BACKUPS_DIR}/status-synonyms-${timestampForFilename(new Date())}.json`;
               await runPipelineStep({
                 pipeline: pipelineLabel,
                 step: "Backup Status Synonyms",
@@ -7447,7 +7548,7 @@ ${story.storyText}
 
     async function writeNewStoryFile(story, pipelineName) {
       const fileName = await getUniqueStoryFileName(story.slug || story.title);
-      const filePath = `${STORIES_DIR}/${fileName}`;
+      const filePath = `${ACTIVE_STORIES_DIR}/${fileName}`;
       const savedStory = {
         ...story,
         filePath,
@@ -7594,7 +7695,7 @@ ${story.storyText}
     }
 
     async function getNextStoryNumber() {
-      await ensureDirectory(STORIES_DIR);
+      await ensureDirectory(ACTIVE_STORIES_DIR);
       let max = 0;
       const storyEntries = await apiListFiles();
       for (const entry of storyEntries) {
@@ -7609,7 +7710,7 @@ ${story.storyText}
 
     async function saveSingleStoryRecord(story) {
       const fileName = await getUniqueStoryFileName(story.slug || story.title);
-      const filePath = `${STORIES_DIR}/${fileName}`;
+      const filePath = `${ACTIVE_STORIES_DIR}/${fileName}`;
       const savedStory = { ...story, filePath };
       const storyMarkdown = buildStoryMarkdown(savedStory);
       await writeTextFile(filePath, storyMarkdown, { allowOverwrite: false });
@@ -7626,7 +7727,7 @@ ${story.storyText}
       const base = sanitizeStorySlug(seed) || `story-${String(await getNextStoryNumber()).padStart(3, "0")}`;
       let candidate = `${base}.md`;
       let suffix = 2;
-      while (await fileExists(`${STORIES_DIR}/${candidate}`)) {
+      while (await fileExists(`${ACTIVE_STORIES_DIR}/${candidate}`)) {
         candidate = `${base}-${suffix}.md`;
         suffix += 1;
       }
@@ -8552,7 +8653,7 @@ No writing sample has been provided yet.
 
     async function ensureStorytellerStructure(storytellerId) {
       await ensureStorytellerStructure(PRIMARY_STORYTELLER_ID);
-      await ensureDirectory(BACKUPS_DIR);
+      await ensureDirectory(ACTIVE_BACKUPS_DIR);
     }
 
     async function migrateLegacyArchiveLayout() {
@@ -8560,9 +8661,9 @@ No writing sample has been provided yet.
         return;
       }
 
-      await ensureDirectory(REFERENCE_DIR);
-      await ensureDirectory(STORIES_DIR);
-      await ensureDirectory(META_STORIES_DIR);
+      await ensureDirectory(ACTIVE_REFERENCE_DIR);
+      await ensureDirectory(ACTIVE_STORIES_DIR);
+      await ensureDirectory(ACTIVE_META_STORIES_DIR);
 
       const migrations = [
         { from: "profile.md", to: PROFILE_FILE },
@@ -8595,7 +8696,7 @@ No writing sample has been provided yet.
 
       await migrateLegacyArchiveLayout();
       await migrateLegacyConfigs();
-      const configExists = await fileExists(ARCHIVE_CONFIG_FILE);
+      const configExists = await fileExists(ACTIVE_ARCHIVE_CONFIG_FILE);
       const indexExists = await fileExists(STORY_INDEX_FILE) || await fileExists("master-index.md");
       if (!configExists || !indexExists) {
         await initializeCollection();
@@ -8621,7 +8722,7 @@ No writing sample has been provided yet.
       config.profileComplete = nextRecord.onboardingComplete;
       config.styleGuideComplete = nextRecord.styleGuideComplete;
       config.storyCount = nextRecord.storyCount;
-      await writeTextFile(ARCHIVE_CONFIG_FILE, JSON.stringify(config, null, 2), { allowOverwrite: true });
+      await writeTextFile(ACTIVE_ARCHIVE_CONFIG_FILE, JSON.stringify(config, null, 2), { allowOverwrite: true });
       state.storytellers = nextRecord.name ? [nextRecord] : [];
       renderStorytellerList();
     }
@@ -8865,6 +8966,7 @@ No writing sample has been provided yet.
         profileComplete: Boolean(legacyConfig?.profileComplete ?? legacyConfig?.onboardingComplete),
         styleGuideComplete: Boolean(legacyConfig?.styleGuideComplete),
         storyCount: Number(legacyConfig?.storyCount || 0),
+        designTheme: normaliseDesignTheme(legacyConfig?.designTheme || DEFAULT_ARCHIVE_CONFIG.designTheme),
         backupRetentionDays: Number(legacyConfig?.backupRetentionDays || DEFAULT_ARCHIVE_CONFIG.backupRetentionDays),
         firstRun: Boolean(legacyConfig?.firstRun)
       };
@@ -8878,7 +8980,7 @@ No writing sample has been provided yet.
       }
 
       const appExists = await fileExists(APP_CONFIG_FILE).catch(() => false);
-      const archiveExists = await fileExists(ARCHIVE_CONFIG_FILE).catch(() => false);
+      const archiveExists = await fileExists(ACTIVE_ARCHIVE_CONFIG_FILE).catch(() => false);
       const legacyConfig = JSON.parse(await readTextFile("config.json"));
       const { appConfig, archiveConfig } = splitLegacyConfig(legacyConfig);
 
@@ -8886,8 +8988,8 @@ No writing sample has been provided yet.
         await writeTextFile(APP_CONFIG_FILE, JSON.stringify(appConfig, null, 2), { allowOverwrite: false });
       }
       if (!archiveExists) {
-        await ensureDirectory(DATA_STORE_ROOT);
-        await writeTextFile(ARCHIVE_CONFIG_FILE, JSON.stringify(archiveConfig, null, 2), { allowOverwrite: false });
+        await ensureDirectory(ACTIVE_ARCHIVE_ROOT);
+        await writeTextFile(ACTIVE_ARCHIVE_CONFIG_FILE, JSON.stringify(archiveConfig, null, 2), { allowOverwrite: false });
       }
     }
 
@@ -8899,10 +9001,10 @@ No writing sample has been provided yet.
       }
 
       try {
-        await ensureDirectory(REFERENCE_DIR);
-        await ensureDirectory(STORIES_DIR);
-        await ensureDirectory(META_STORIES_DIR);
-        await ensureDirectory(BACKUPS_DIR);
+        await ensureDirectory(ACTIVE_REFERENCE_DIR);
+        await ensureDirectory(ACTIVE_STORIES_DIR);
+        await ensureDirectory(ACTIVE_META_STORIES_DIR);
+        await ensureDirectory(ACTIVE_BACKUPS_DIR);
 
         const appConfigExists = await fileExists(APP_CONFIG_FILE);
         if (!appConfigExists) {
@@ -8917,13 +9019,13 @@ No writing sample has been provided yet.
           await writeTextFile(APP_CONFIG_FILE, JSON.stringify(appConfig, null, 2), { allowOverwrite: false });
         }
 
-        const archiveConfigExists = await fileExists(ARCHIVE_CONFIG_FILE);
+        const archiveConfigExists = await fileExists(ACTIVE_ARCHIVE_CONFIG_FILE);
         if (!archiveConfigExists) {
           const archiveConfig = {
             ...DEFAULT_ARCHIVE_CONFIG,
             createdAt: new Date().toISOString()
           };
-          await writeTextFile(ARCHIVE_CONFIG_FILE, JSON.stringify(archiveConfig, null, 2), { allowOverwrite: false });
+          await writeTextFile(ACTIVE_ARCHIVE_CONFIG_FILE, JSON.stringify(archiveConfig, null, 2), { allowOverwrite: false });
         }
 
         const storyIndexExists = await fileExists(STORY_INDEX_FILE);
@@ -8953,6 +9055,7 @@ No writing sample has been provided yet.
       try {
         await migrateLegacyConfigs();
         const appConfig = await getAppSettingsData();
+        const archiveRegistry = await apiGetArchives().catch(() => null);
         const archiveConfig = await getArchiveConfigData();
         if (!appConfig && !archiveConfig) {
           return;
@@ -8961,9 +9064,8 @@ No writing sample has been provided yet.
         state.openRouterConfigured = Boolean(appConfig?.openRouterConfigured);
         state.openRouterWorking = false;
         state.assemblyAiConfigured = Boolean(appConfig?.assemblyAiConfigured);
-        state.designTheme = normaliseDesignTheme(appConfig?.designTheme || "og");
+        state.designTheme = normaliseDesignTheme(archiveConfig?.designTheme || appConfig?.designTheme || "og");
         elements.designTheme.value = state.designTheme;
-        localStorage.setItem(LOCAL_STORAGE_KEYS.designTheme, state.designTheme);
         applyDesignTheme();
         elements.apiKey.value = "";
         elements.assemblyApiKey.value = "";
@@ -8975,6 +9077,12 @@ No writing sample has been provided yet.
         state.dynamicPipelineStatusMessages = appConfig?.dynamicPipelineStatusMessages !== false;
         elements.dynamicPipelineStatusToggle.checked = state.dynamicPipelineStatusMessages;
         state.taskMaxTokens = normaliseTaskMaxTokens(appConfig?.taskMaxTokens);
+        state.activeArchiveId = String(archiveRegistry?.activeArchiveId || appConfig?.activeArchiveId || "");
+        state.archives = Array.isArray(archiveRegistry?.archives)
+          ? archiveRegistry.archives
+          : (Array.isArray(appConfig?.archives) ? appConfig.archives : []);
+        state.rootName = getActiveArchiveLabel() ? `local archive: ${getActiveArchiveLabel()}` : "local archive";
+        elements.folderNameBadge.textContent = state.rootName || "connected";
         renderTokenSettingsInputs();
         if (appConfig?.modelRouting && MODEL_ROUTING[appConfig.modelRouting]) {
           state.routingMode = appConfig.modelRouting;
@@ -9034,7 +9142,6 @@ No writing sample has been provided yet.
         createdAt: new Date().toISOString(),
         modelRouting: state.routingMode,
         modelOverride: state.modelOverride || null,
-        designTheme: normaliseDesignTheme(state.designTheme),
         debugMode: Boolean(state.debugMode),
         dynamicPipelineStatusMessages: Boolean(state.dynamicPipelineStatusMessages),
         taskMaxTokens: normaliseTaskMaxTokens(state.taskMaxTokens)
@@ -9085,7 +9192,6 @@ No writing sample has been provided yet.
         createdAt: new Date().toISOString(),
         modelRouting: state.routingMode,
         modelOverride: state.modelOverride || null,
-        designTheme: normaliseDesignTheme(state.designTheme),
         debugMode: Boolean(state.debugMode),
         dynamicPipelineStatusMessages: Boolean(state.dynamicPipelineStatusMessages),
         taskMaxTokens: normaliseTaskMaxTokens(state.taskMaxTokens)
@@ -9102,7 +9208,6 @@ No writing sample has been provided yet.
         createdAt: new Date().toISOString(),
         modelRouting: state.routingMode,
         modelOverride: state.modelOverride || null,
-        designTheme: normaliseDesignTheme(state.designTheme),
         debugMode: Boolean(state.debugMode),
         dynamicPipelineStatusMessages: Boolean(state.dynamicPipelineStatusMessages),
         taskMaxTokens: normaliseTaskMaxTokens(state.taskMaxTokens)
@@ -9119,7 +9224,6 @@ No writing sample has been provided yet.
         createdAt: new Date().toISOString(),
         modelRouting: state.routingMode,
         modelOverride: state.modelOverride || null,
-        designTheme: normaliseDesignTheme(state.designTheme),
         debugMode: Boolean(state.debugMode),
         dynamicPipelineStatusMessages: Boolean(state.dynamicPipelineStatusMessages),
         taskMaxTokens: normaliseTaskMaxTokens(state.taskMaxTokens)
@@ -9131,16 +9235,14 @@ No writing sample has been provided yet.
       if (!state.rootHandle) {
         return;
       }
-      const config = {
-        createdAt: new Date().toISOString(),
-        modelRouting: state.routingMode,
-        modelOverride: state.modelOverride || null,
-        designTheme: normaliseDesignTheme(state.designTheme),
-        debugMode: Boolean(state.debugMode),
-        dynamicPipelineStatusMessages: Boolean(state.dynamicPipelineStatusMessages),
-        taskMaxTokens: normaliseTaskMaxTokens(state.taskMaxTokens)
-      };
-      await apiSaveAppConfig(config);
+      const existing = await getArchiveConfigData().catch(() => null);
+      if (!existing) {
+        return;
+      }
+      await apiSaveArchiveConfig({
+        ...existing,
+        designTheme: normaliseDesignTheme(state.designTheme)
+      });
       flashSavedSetting(flashTarget);
     }
 
@@ -9373,7 +9475,7 @@ No writing sample has been provided yet.
       } else {
         const storyMatch = name.match(/^(.+?)-(?:follow-up|pre-style|update)-(\d{4}-\d{2}-\d{2}T.+)\.md$/i);
         if (storyMatch) {
-          targetPath = `${STORIES_DIR}/${storyMatch[1]}.md`;
+          targetPath = `${ACTIVE_STORIES_DIR}/${storyMatch[1]}.md`;
           label = targetPath;
           timestamp = storyMatch[2];
         }
@@ -9505,6 +9607,7 @@ No writing sample has been provided yet.
 
     async function refreshManagementPanels() {
       renderManagementSummary();
+      renderArchiveManagement();
       await renderStoryArchiveList();
     }
 
@@ -9513,6 +9616,7 @@ No writing sample has been provided yet.
       const followUpCount = state.pendingFollowUpCount || 0;
       const backupCount = state.backupEntries.length;
       const badges = [
+        `Active archive: <strong>${escapeHtml(getActiveArchiveLabel() || "none")}</strong>`,
         `Storyteller: <strong>${escapeHtml(entry?.name || state.onboarding.storytellerName || "none")}</strong>`,
         `Profile: <strong>${state.onboarding.profileSaved ? "ready" : "missing"}</strong>`,
         `Style guide: <strong>${state.onboarding.styleGuideSaved ? "ready" : "missing"}</strong>`,
@@ -9524,6 +9628,73 @@ No writing sample has been provided yet.
         `Backups: <strong>${backupCount}</strong>`
       ];
       elements.managementSummaryBadges.innerHTML = badges.map((badge) => `<span class="pill">${badge}</span>`).join("");
+    }
+
+    function getActiveArchiveLabel() {
+      return state.archives.find((entry) => entry.id === state.activeArchiveId)?.label || "";
+    }
+
+    function renderArchiveManagement() {
+      if (!elements.archiveManagementList || !elements.archiveManagementSummary) {
+        return;
+      }
+      const archiveCount = state.archives.length;
+      const activeLabel = getActiveArchiveLabel() || "none";
+      elements.archiveManagementSummary.innerHTML = `Active archive: <strong>${escapeHtml(activeLabel)}</strong> · Available archives: <strong>${archiveCount}</strong>`;
+      elements.archiveManagementList.innerHTML = "";
+      if (!archiveCount) {
+        elements.archiveManagementList.innerHTML = `<div class="empty-state">No archives are available yet.</div>`;
+        return;
+      }
+      state.archives.forEach((archive) => {
+        const card = document.createElement("article");
+        card.className = "storyteller-card";
+        const isActive = archive.id === state.activeArchiveId;
+        card.innerHTML = `
+          <div>
+            <h3>${escapeHtml(archive.label || archive.id)}</h3>
+            <div class="hint">ID: ${escapeHtml(archive.id)}${isActive ? " · Active archive" : ""}</div>
+          </div>
+        `;
+        const actions = document.createElement("div");
+        actions.className = "storyteller-actions";
+        const exportButton = document.createElement("button");
+        exportButton.type = "button";
+        exportButton.className = "button-secondary";
+        exportButton.textContent = "Export Archive";
+        exportButton.addEventListener("click", () => exportArchive(archive.id));
+        actions.appendChild(exportButton);
+        if (isActive) {
+          const badge = document.createElement("span");
+          badge.className = "pill";
+          badge.innerHTML = "Status: <strong>active</strong>";
+          actions.appendChild(badge);
+        } else {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "button-secondary";
+          button.textContent = "Switch To This Archive";
+          button.addEventListener("click", () => switchArchive(archive.id));
+          actions.appendChild(button);
+        }
+        const renameButton = document.createElement("button");
+        renameButton.type = "button";
+        renameButton.className = "button-secondary";
+        renameButton.textContent = "Rename Archive";
+        renameButton.addEventListener("click", () => renameArchive(archive));
+        actions.appendChild(renameButton);
+
+        if (archiveCount > 1) {
+          const deleteButton = document.createElement("button");
+          deleteButton.type = "button";
+          deleteButton.className = "button-secondary";
+          deleteButton.textContent = "Delete Archive";
+          deleteButton.addEventListener("click", () => deleteArchiveEntry(archive));
+          actions.appendChild(deleteButton);
+        }
+        card.appendChild(actions);
+        elements.archiveManagementList.appendChild(card);
+      });
     }
 
     function getStoryArchiveSortValue(entry) {
@@ -9680,7 +9851,7 @@ No writing sample has been provided yet.
         ...existing,
         backupRetentionDays: retentionValue
       };
-      await writeTextFile(ARCHIVE_CONFIG_FILE, JSON.stringify(config, null, 2), { allowOverwrite: true });
+      await writeTextFile(ACTIVE_ARCHIVE_CONFIG_FILE, JSON.stringify(config, null, 2), { allowOverwrite: true });
       elements.backupRetentionDaysInput.value = retentionValue > 0 ? String(retentionValue) : "keep-all";
       setStatus(elements.backupStatus, "Backup settings saved.", "success");
       await loadConfigSummary();
@@ -9746,7 +9917,7 @@ No writing sample has been provided yet.
         state.currentFileContent = content;
         elements.fileModalPath.textContent = path;
         await refreshFileList();
-        if (path === APP_CONFIG_FILE || path === ARCHIVE_CONFIG_FILE) {
+        if (path === APP_CONFIG_FILE || path === ACTIVE_ARCHIVE_CONFIG_FILE) {
           await loadConfigSummary();
         } else if (path === FOLLOW_UPS_FILE) {
           state.gathering.followUpsContent = content;
@@ -9884,14 +10055,37 @@ No writing sample has been provided yet.
       return apiPostJson("/api/archive/ensure", {});
     }
 
+    async function apiGetArchives() {
+      return apiGetJson("/api/archives");
+    }
+
+    async function apiSwitchArchive(archiveId) {
+      return apiPostJson("/api/archives/switch", { archiveId });
+    }
+
+    async function apiCreateArchive(payload) {
+      return apiPostJson("/api/archives/create", payload);
+    }
+
+    async function apiRenameArchive(archiveId, label) {
+      return apiPostJson("/api/archives/rename", { archiveId, label });
+    }
+
+    async function apiDeleteArchive(archiveId) {
+      return apiPostJson("/api/archives/delete", { archiveId });
+    }
+
     function getDownloadFilenameFromResponse(response, fallbackName) {
       const disposition = response.headers.get("content-disposition") || "";
       const match = disposition.match(/filename=\"([^\"]+)\"/i);
       return match?.[1] || fallbackName;
     }
 
-    async function apiExportArchive() {
-      const response = await fetch("/api/archive/export", { cache: "no-store" });
+    async function apiExportArchive(archiveId = "") {
+      const resource = archiveId
+        ? `/api/archives/export?archiveId=${encodeURIComponent(archiveId)}`
+        : "/api/archive/export";
+      const response = await fetch(resource, { cache: "no-store" });
       if (!response.ok) {
         const detail = await safeReadApiError(response);
         throw new Error(detail || `${response.status} ${response.statusText}`);
@@ -9903,7 +10097,7 @@ No writing sample has been provided yet.
     }
 
     async function apiImportArchive(file) {
-      const response = await fetch("/api/archive/import", {
+      const response = await fetch("/api/archives/import", {
         method: "POST",
         headers: {
           "Content-Type": "application/zip"
@@ -9964,7 +10158,7 @@ No writing sample has been provided yet.
     }
 
     function isImmutableStoryPath(path) {
-      return /^(stories|memory-keeper-data-store\/stories)\/[^/]+\.md$/i.test(path);
+      return new RegExp(`^(stories|${ACTIVE_ARCHIVE_ROOT}/stories)/[^/]+\\.md$`, "i").test(path);
     }
 
     async function createBackup(path) {
@@ -9972,11 +10166,11 @@ No writing sample has been provided yet.
       const timestamp = timestampForFilename(new Date());
 
       if (path === STORY_INDEX_FILE || path === "master-index.md") {
-        await ensureDirectory(BACKUPS_DIR);
+        await ensureDirectory(ACTIVE_BACKUPS_DIR);
         const baseName = path === STORY_INDEX_FILE ? "story-index" : "master-index";
-        const backupPath = `${BACKUPS_DIR}/${baseName}-${timestamp}.md`;
+        const backupPath = `${ACTIVE_BACKUPS_DIR}/${baseName}-${timestamp}.md`;
         await writeTextFile(backupPath, currentContent, { allowOverwrite: false });
-        await cleanupBackups(BACKUPS_DIR);
+        await cleanupBackups(ACTIVE_BACKUPS_DIR);
         return;
       }
 
@@ -9984,21 +10178,21 @@ No writing sample has been provided yet.
         return;
       }
 
-      await ensureDirectory(BACKUPS_DIR);
+      await ensureDirectory(ACTIVE_BACKUPS_DIR);
       const baseName = path.split("/").pop().replace(/\.md$/, "");
-      const backupPath = `${BACKUPS_DIR}/${baseName}-${timestamp}.md`;
+      const backupPath = `${ACTIVE_BACKUPS_DIR}/${baseName}-${timestamp}.md`;
       await writeTextFile(backupPath, currentContent, { allowOverwrite: false });
-      await cleanupBackups(BACKUPS_DIR);
+      await cleanupBackups(ACTIVE_BACKUPS_DIR);
     }
 
     async function createStoryFileBackup(path, label = "update") {
       const currentContent = await readTextFile(path);
       const timestamp = timestampForFilename(new Date());
       const baseName = normalizePath(path).split("/").pop().replace(/\.md$/i, "");
-      await ensureDirectory(BACKUPS_DIR);
-      const backupPath = `${BACKUPS_DIR}/${baseName}-${label}-${timestamp}.md`;
+      await ensureDirectory(ACTIVE_BACKUPS_DIR);
+      const backupPath = `${ACTIVE_BACKUPS_DIR}/${baseName}-${label}-${timestamp}.md`;
       await writeTextFile(backupPath, currentContent, { allowOverwrite: false });
-      await cleanupBackups(BACKUPS_DIR);
+      await cleanupBackups(ACTIVE_BACKUPS_DIR);
       return backupPath;
     }
 
@@ -10051,7 +10245,7 @@ No writing sample has been provided yet.
         return normalized;
       }
       if (/^stories\/[^/]+\.md$/i.test(normalized)) {
-        const migrated = `${STORIES_DIR}/${normalized.slice("stories/".length)}`;
+        const migrated = `${ACTIVE_STORIES_DIR}/${normalized.slice("stories/".length)}`;
         if (await fileExists(migrated).catch(() => false)) {
           return migrated;
         }

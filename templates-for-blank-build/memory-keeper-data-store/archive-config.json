@@ -5,6 +5,7 @@
   "profileComplete": false,
   "styleGuideComplete": false,
   "storyCount": 0,
+  "designTheme": "og",
   "backupRetentionDays": 90,
   "firstRun": true
 }

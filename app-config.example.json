@@ -7,6 +7,8 @@
   "modelOverride": "anthropic/claude-haiku-4.5",
   "port": 8787,
   "debugMode": true,
+  "activeArchiveId": null,
+  "archives": [],
   "taskMaxTokens": {
     "single": {
       "foundation": 1800,
@@ -36,6 +38,5 @@
       "retrievalVoiced": 3200
     }
   },
-  "dynamicPipelineStatusMessages": true,
-  "designTheme": "sunset"
+  "dynamicPipelineStatusMessages": true
 }
