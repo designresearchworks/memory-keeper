@@ -303,8 +303,6 @@
       <div class="panel-section">
         <div class="row" style="margin-bottom: 12px;">
           <button id="rerunOnboardingButton" type="button" class="button-secondary">Rerun Onboarding</button>
-          <button id="generateStatusSynonymsButton" type="button" class="button-secondary">Generate Status Synonyms</button>
-          <button id="resetStatusSynonymsButton" type="button" class="button-secondary">Reset Status Synonyms</button>
           <button id="compactStyleGuideButton" class="button-secondary">Compact Style Guide</button>
           <button id="refreshConnectionsButton" type="button" class="button-secondary">Refresh Connections</button>
         </div>
@@ -492,31 +490,6 @@
         <div class="hint" id="apiKeyModalStatus">Add your OpenRouter key to continue. AssemblyAI can be left blank for now.</div>
         <div class="row">
           <button id="saveApiKeyModalButton" type="button">Save keys</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="file-modal hidden" id="statusSynonymGuidanceModal" aria-hidden="true">
-    <div class="file-modal-dialog confirm-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="statusSynonymGuidanceModalTitle">
-      <div class="file-modal-header">
-        <div class="confirm-modal-copy">
-          <h2 id="statusSynonymGuidanceModalTitle">Generate Status Synonyms</h2>
-          <p id="statusSynonymGuidanceModalMessage">Add an optional guidance note to steer the style of the new status variants.</p>
-        </div>
-      </div>
-      <div class="file-modal-body">
-        <div class="field">
-          <label for="statusSynonymGuidanceInput">Guidance note</label>
-          <textarea id="statusSynonymGuidanceInput" rows="7" placeholder="Examples: a little drier, less whimsical, more literary, more British, less theatrical, more mechanical..."></textarea>
-          <div class="hint">Optional. This note will be added to the status-synonym generation prompt.</div>
-        </div>
-      </div>
-      <div class="file-modal-footer">
-        <div class="hint" id="statusSynonymGuidanceStatus">Leave it blank to generate without extra guidance.</div>
-        <div class="row">
-          <button id="statusSynonymGuidanceCancelButton" type="button" class="button-secondary">Cancel</button>
-          <button id="statusSynonymGuidanceConfirmButton" type="button">Generate</button>
         </div>
       </div>
     </div>
@@ -1101,9 +1074,6 @@
       confirmDialog: {
         resolve: null
       },
-      statusSynonymGuidanceDialog: {
-        resolve: null
-      },
       streamController: null,
       recognition: null,
       isRecording: false,
@@ -1239,11 +1209,6 @@
       assemblyApiKeyModalInput: document.getElementById("assemblyApiKeyModalInput"),
       apiKeyModalStatus: document.getElementById("apiKeyModalStatus"),
       saveApiKeyModalButton: document.getElementById("saveApiKeyModalButton"),
-      statusSynonymGuidanceModal: document.getElementById("statusSynonymGuidanceModal"),
-      statusSynonymGuidanceInput: document.getElementById("statusSynonymGuidanceInput"),
-      statusSynonymGuidanceStatus: document.getElementById("statusSynonymGuidanceStatus"),
-      statusSynonymGuidanceCancelButton: document.getElementById("statusSynonymGuidanceCancelButton"),
-      statusSynonymGuidanceConfirmButton: document.getElementById("statusSynonymGuidanceConfirmButton"),
       storytellerNameInput: document.getElementById("storytellerNameInput"),
       storytellerSlugPreview: document.getElementById("storytellerSlugPreview"),
       styleGuideStatus: document.getElementById("styleGuideStatus"),
@@ -1255,8 +1220,6 @@
       createArchiveButton: document.getElementById("createArchiveButton"),
       importArchiveButton: document.getElementById("importArchiveButton"),
       importArchiveInput: document.getElementById("importArchiveInput"),
-      generateStatusSynonymsButton: document.getElementById("generateStatusSynonymsButton"),
-      resetStatusSynonymsButton: document.getElementById("resetStatusSynonymsButton"),
       gatheringStatus: document.getElementById("gatheringStatus"),
       retrievalStatus: document.getElementById("retrievalStatus"),
       storytellerList: document.getElementById("storytellerList"),
@@ -1306,7 +1269,13 @@
       backupPreview: document.getElementById("backupPreview")
     };
 
-    const uniqueModels = [...new Set(Object.values(MODEL_ROUTING).flatMap((group) => Object.values(group)))];
+    const EXTRA_MODEL_OVERRIDE_OPTIONS = [];
+    const uniqueModels = [
+      ...new Set([
+        ...Object.values(MODEL_ROUTING).flatMap((group) => Object.values(group)),
+        ...EXTRA_MODEL_OVERRIDE_OPTIONS
+      ])
+    ];
 
     applyDesignTheme();
     init();
@@ -1667,11 +1636,6 @@
           return;
         }
       });
-      elements.statusSynonymGuidanceModal.addEventListener("click", (event) => {
-        if (event.target === elements.statusSynonymGuidanceModal) {
-          resolveStatusSynonymGuidanceDialog(null);
-        }
-      });
       elements.pouyanModal.addEventListener("click", (event) => {
         if (event.target === elements.pouyanModal) {
           closePouyanModal();
@@ -1687,16 +1651,6 @@
       });
       elements.confirmModalCancelButton.addEventListener("click", () => resolveConfirmModal(false));
       elements.confirmModalConfirmButton.addEventListener("click", () => resolveConfirmModal(true));
-      elements.statusSynonymGuidanceCancelButton.addEventListener("click", () => resolveStatusSynonymGuidanceDialog(null));
-      elements.statusSynonymGuidanceConfirmButton.addEventListener("click", () => {
-        resolveStatusSynonymGuidanceDialog(elements.statusSynonymGuidanceInput.value.trim());
-      });
-      elements.statusSynonymGuidanceInput.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-          event.preventDefault();
-          resolveStatusSynonymGuidanceDialog(elements.statusSynonymGuidanceInput.value.trim());
-        }
-      });
       elements.closePouyanModalButton.addEventListener("click", closePouyanModal);
 
       elements.storytellerNameInput.addEventListener("input", updateStorytellerSlugPreview);
@@ -1708,8 +1662,6 @@
           createArchiveAndStartOnboarding();
         }
       });
-      elements.generateStatusSynonymsButton.addEventListener("click", () => generatePipelineStatusSynonyms({ overwrite: false }));
-      elements.resetStatusSynonymsButton.addEventListener("click", () => generatePipelineStatusSynonyms({ overwrite: true }));
       elements.importArchiveButton.addEventListener("click", () => {
         elements.importArchiveInput.value = "";
         elements.importArchiveInput.click();
@@ -1834,10 +1786,6 @@
           return;
         }
         if (event.key === "Escape" && !elements.apiKeyModal.classList.contains("hidden")) {
-          return;
-        }
-        if (event.key === "Escape" && !elements.statusSynonymGuidanceModal.classList.contains("hidden")) {
-          resolveStatusSynonymGuidanceDialog(null);
           return;
         }
         if (event.key === "Escape" && !elements.pouyanModal.classList.contains("hidden")) {
@@ -4726,8 +4674,6 @@ ${quoted}
       elements.resetListenButton.title = locked ? waitTitle : "";
       elements.micButton.disabled = locked || !state.audioInput.supported || !hasAssemblyCredentials;
       elements.listenSendButton.disabled = locked && !streaming;
-      elements.generateStatusSynonymsButton.disabled = locked || streaming;
-      elements.resetStatusSynonymsButton.disabled = locked || streaming;
       elements.compactStyleGuideButton.disabled = locked || streaming;
       elements.refreshConnectionsButton.disabled = locked || streaming;
       elements.rerunOnboardingButton.disabled = locked || streaming;
@@ -9370,40 +9316,6 @@ No writing sample has been provided yet.
       elements.confirmModal.classList.add("hidden");
       elements.confirmModal.setAttribute("aria-hidden", "true");
       elements.confirmModalConfirmButton.classList.remove("button-danger");
-    }
-
-    function openStatusSynonymGuidanceModal() {
-      elements.statusSynonymGuidanceInput.value = "";
-      elements.statusSynonymGuidanceStatus.textContent = "Leave it blank to generate without extra guidance.";
-      elements.statusSynonymGuidanceModal.classList.remove("hidden");
-      elements.statusSynonymGuidanceModal.setAttribute("aria-hidden", "false");
-      window.setTimeout(() => {
-        elements.statusSynonymGuidanceInput.focus();
-      }, 0);
-    }
-
-    function closeStatusSynonymGuidanceModal() {
-      elements.statusSynonymGuidanceModal.classList.add("hidden");
-      elements.statusSynonymGuidanceModal.setAttribute("aria-hidden", "true");
-    }
-
-    function resolveStatusSynonymGuidanceDialog(value) {
-      const resolver = state.statusSynonymGuidanceDialog.resolve;
-      state.statusSynonymGuidanceDialog.resolve = null;
-      closeStatusSynonymGuidanceModal();
-      if (typeof resolver === "function") {
-        resolver(value);
-      }
-    }
-
-    function showStatusSynonymGuidanceModal() {
-      if (state.statusSynonymGuidanceDialog.resolve) {
-        return Promise.resolve(null);
-      }
-      return new Promise((resolve) => {
-        state.statusSynonymGuidanceDialog.resolve = resolve;
-        openStatusSynonymGuidanceModal();
-      });
     }
 
     function openPouyanModal() {

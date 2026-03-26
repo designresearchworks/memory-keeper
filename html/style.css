@@ -1346,7 +1346,7 @@ button:disabled {
 .app-shell {
   max-width: 1320px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 34px 24px 24px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 18px;
@@ -1387,6 +1387,7 @@ button:disabled {
 
 .pipeline-bar {
   position: fixed;
+  top: 0;
   inset: 0 0 auto 0;
   z-index: 1000;
   min-height: 8px;
