@@ -14,7 +14,12 @@ else
     log "Installing Node.js with Homebrew..."
     brew install node
   else
-    VERSION="$(curl -fsSL https://nodejs.org/dist/index.json | grep -o "\"version\":\"v${NODE_MAJOR}\\.[^\"]*\"" | head -n 1 | cut -d '\"' -f 4)"
+    VERSION="$(
+      curl -fsSL https://nodejs.org/dist/index.json \
+        | grep -o "\"version\":\"v${NODE_MAJOR}\\.[^\"]*\"" \
+        | head -n 1 \
+        | sed -E 's/"version":"([^"]*)"/\1/'
+    )"
     if [[ -z "${VERSION}" ]]; then
       log "Could not determine the latest Node.js ${NODE_MAJOR}.x release."
       exit 1
